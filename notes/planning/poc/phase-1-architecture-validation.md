@@ -8,15 +8,15 @@ This phase establishes the core architectural foundations of DesktopUI in pure E
 
 Define the contract that all UI components must implement, following the Elm Architecture pattern (TEA). This behaviour provides the foundation for predictable state management and unidirectional data flow.
 
-- [ ] **Task 1.1** Create `DesktopUI.Elm` behaviour module
+- [x] **Task 1.1** Create `DesktopUI.Elm` behaviour module
 
 Define the three core callbacks that components must implement:
 
-- [ ] 1.1.1 Define `init/1` callback specification - receives options, returns `{initial_state, initial_commands}`
-- [ ] 1.1.2 Define `update/2` callback specification - receives message and state, returns `{new_state, commands}`
-- [ ] 1.1.3 Define `view/1` callback specification - receives state, returns `ui_element()` structure
-- [ ] 1.1.4 Define `ui_element()` type specification - recursive structure for UI trees
-- [ ] 1.1.5 Define `command()` type specification - structured side effect representation
+- [x] 1.1.1 Define `init/1` callback specification - receives options, returns `{initial_state, initial_commands}`
+- [x] 1.1.2 Define `update/2` callback specification - receives message and state, returns `{new_state, commands}`
+- [x] 1.1.3 Define `view/1` callback specification - receives state, returns `ui_element()` structure
+- [x] 1.1.4 Define `ui_element()` type specification - recursive structure for UI trees
+- [x] 1.1.5 Define `command()` type specification - structured side effect representation
 
 **Implementation Notes:**
 - Use `@callback` directive for each function specification
@@ -26,11 +26,13 @@ Define the three core callbacks that components must implement:
 - Document each callback with clear examples in module documentation
 
 **Unit Tests for Section 1.1:**
-- [ ] 1.1.1 Verify behaviour is defined with correct callback specifications
-- [ ] 1.1.2 Verify `use DesktopUI.Elm` generates required function stubs
-- [ ] 1.1.3 Verify `ui_element()` type compiles correctly
-- [ ] 1.1.4 Verify `command()` type compiles correctly
-- [ ] 1.1.5 Verify Dialyzer type checking passes for behaviour module
+- [x] 1.1.1 Verify behaviour is defined with correct callback specifications
+- [x] 1.1.2 Verify `use DesktopUI.Elm` generates required function stubs
+- [x] 1.1.3 Verify `ui_element()` type compiles correctly
+- [x] 1.1.4 Verify `command()` type compiles correctly
+- [x] 1.1.5 Verify Dialyzer type checking passes for behaviour module
+
+**Status:** Completed 2025-01-22 - See `notes/summaries/section-1.1-elm-behaviour-definition.md` for details.
 
 ---
 
