@@ -40,16 +40,16 @@ Define the three core callbacks that components must implement:
 
 Create the declarative widget system that components use to build their UI trees. These are pure data structures, not renderers— they describe what to render, not how.
 
-- [ ] **Task 1.2** Create `DesktopUI.Widget` module and widget constructors
+- [x] **Task 1.2** Create `DesktopUI.Widget` module and widget constructors
 
 Define the core widget data structure and helper functions:
 
-- [ ] 1.2.1 Define `DesktopUI.Widget` struct with `:type`, `:id`, `:props`, `:children` fields
-- [ ] 1.2.2 Create `label/2` helper function - text string and optional props
-- [ ] 1.2.3 Create `button/3` helper function - text, on_click message, and optional props
-- [ ] 1.2.4 Create `container/3` helper function - type (`:vbox`, `:hbox`), children list, and props
-- [ ] 1.2.5 Define `@type` specifications for all widget constructors
-- [ ] 1.2.6 Add validation functions for widget structure integrity
+- [x] 1.2.1 Define `DesktopUI.Widget` struct with `:type`, `:id`, `:props`, `:children` fields
+- [x] 1.2.2 Create `label/2` helper function - text string and optional props
+- [x] 1.2.3 Create `button/3` helper function - text, on_click message, and optional props
+- [x] 1.2.4 Create `container/3` helper function - type (`:vbox`, `:hbox`), children list, and props
+- [x] 1.2.5 Define `@type` specifications for all widget constructors
+- [x] 1.2.6 Add validation functions for widget structure integrity
 
 **Implementation Notes:**
 - Widget structs should be serializable and comparable
@@ -60,13 +60,15 @@ Define the core widget data structure and helper functions:
 - Props should support common attributes like `:width`, `:height`, `:spacing`, `:padding`
 
 **Unit Tests for Section 1.2:**
-- [ ] 1.2.1 Verify widget struct creation with all fields
-- [ ] 1.2.2 Verify `label/2` creates correct widget structure
-- [ ] 1.2.3 Verify `button/3` creates correct widget with on_click property
-- [ ] 1.2.4 Verify `container/3` supports both :vbox and :hbox types
-- [ ] 1.2.5 Verify nested widgets through children field
-- [ ] 1.2.6 Verify widget validation catches invalid structures
-- [ ] 1.2.7 Verify widget equality comparison works correctly
+- [x] 1.2.1 Verify widget struct creation with all fields
+- [x] 1.2.2 Verify `label/2` creates correct widget structure
+- [x] 1.2.3 Verify `button/3` creates correct widget with on_click property
+- [x] 1.2.4 Verify `container/3` supports both :vbox and :hbox types
+- [x] 1.2.5 Verify nested widgets through children field
+- [x] 1.2.6 Verify widget validation catches invalid structures
+- [x] 1.2.7 Verify widget equality comparison works correctly
+
+**Status:** Completed 2025-01-22 - See `notes/summaries/section-1.2-widget-construction-dsl.md` for details.
 
 ---
 
