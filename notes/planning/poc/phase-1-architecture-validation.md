@@ -115,16 +115,16 @@ Implement the foundation for Jido-based architecture:
 
 Revise the Elm behaviour to integrate with Jido.Agent, making components autonomous agents.
 
-- [ ] **Task 1.4** Revise `DesktopUI.Elm` to use Jido.Agent
+- [x] **Task 1.4** Revise `DesktopUI.Elm` to use Jido.Agent
 
 Update Elm behaviour for agent-based components:
 
-- [ ] 1.4.1 Integrate `use Jido.Agent` into `DesktopUI.Elm.__using__/1` macro
-- [ ] 1.4.2 Add `on_signal/2` callback for signal-based event handling
-- [ ] 1.4.3 Create `handle_ui_signal/2` helper for processing UI messages
-- [ ] 1.4.4 Auto-publish state_change signals after state updates
-- [ ] 1.4.5 Maintain backward compatibility with existing init/update/view callbacks
-- [ ] 1.4.6 Add agent registration helpers for component discovery
+- [x] 1.4.1 Integrate `use Jido.Agent` into `DesktopUI.Elm.__using__/1` macro
+- [x] 1.4.2 Add `on_signal/2` callback for signal-based event handling
+- [x] 1.4.3 Create `handle_ui_signal/2` helper for processing UI messages
+- [x] 1.4.4 Auto-publish state_change signals after state updates
+- [x] 1.4.5 Maintain backward compatibility with existing init/update/view callbacks
+- [x] 1.4.6 Add agent registration helpers for component discovery
 
 **Implementation Notes:**
 - Components using `use DesktopUI.Elm` automatically get Jido.Agent capabilities
@@ -133,14 +133,17 @@ Update Elm behaviour for agent-based components:
 - Keep the Elm callbacks (init, update, view) pure and simple
 - Agent state schema includes the component's Elm state
 - Support both sync and async signal handling
+- Elm state is lazily initialized on first handle_ui_signal/2 call
 
 **Unit Tests for Section 1.4:**
-- [ ] 1.4.1 Verify component with `use DesktopUI.Elm` is a valid Jido.Agent
-- [ ] 1.4.2 Verify component's init/1 is called on agent startup
-- [ ] 1.4.3 Verify state changes publish StateChanged signals
-- [ ] 1.4.4 Verify on_signal/2 receives UI event signals
-- [ ] 1.4.5 Verify handle_ui_signal/2 calls update/2 with message
-- [ ] 1.4.6 Verify view/1 returns valid widget tree
+- [x] 1.4.1 Verify component with `use DesktopUI.Elm` is a valid Jido.Agent
+- [x] 1.4.2 Verify component's init/1 is called on agent startup
+- [x] 1.4.3 Verify state changes publish StateChanged signals
+- [x] 1.4.4 Verify on_signal/2 receives UI event signals
+- [x] 1.4.5 Verify handle_ui_signal/2 calls update/2 with message
+- [x] 1.4.6 Verify view/1 returns valid widget tree
+
+**Status:** Completed 2025-01-23 - See `notes/summaries/section-1.4-elm-jido-integration.md` for details.
 
 ---
 
