@@ -2,6 +2,8 @@
 
 This phase builds the critical bridge between Elixir and native graphics through SDL2 NIFs. We create a minimal but functional graphics API that enables real window creation, basic drawing, and event handling. This phase introduces C code and the complexities of BEAM-C integration, establishing the foundation for all future rendering capabilities.
 
+**Note:** This phase builds on the Jido-first architecture from Phase 1. SDL events are translated to Jido signals by the Runtime event bridge.
+
 ---
 
 ## 2.1 C NIF Foundation
@@ -223,38 +225,64 @@ Create the SDL2-based renderer:
 
 ---
 
-## 2.7 Runtime Integration with SDL2
+## 2.7 Runtime Integration with SDL2 (Jido Event Bridge)
 
-Update the Runtime to use the SDL2 renderer and poll real events.
+Update the Runtime to bridge SDL events to Jido signals and use the SDL2 renderer.
 
-- [ ] **Task 2.7** Integrate SDL2 into Runtime
+- [ ] **Task 2.7** Integrate SDL2 into Runtime as event bridge
 
-Connect Runtime to real graphics:
+Connect Runtime to real graphics via signals:
 
 - [ ] 2.7.1 Update `DesktopUI.Runtime.start_link/2` to initialize SDL2
 - [ ] 2.7.2 Add window creation with title and dimensions
-- [ ] 2.7.3 Replace mock renderer with SDL2 renderer
+- [ ] 2.7.3 Replace mock renderer with SDL2 renderer in coordinator
 - [ ] 2.7.4 Add event polling loop in Runtime
-- [ ] 2.7.5 Translate SDL events to component messages
-- [ ] 2.7.6 Handle SDL_QUIT to terminate Runtime
-- [ ] 2.7.7 Implement hit testing for button clicks
+- [ ] 2.7.5 Translate SDL events to Jido signals (Clicked, KeyPressed, etc.)
+- [ ] 2.7.6 Publish translated signals to `:desktop_ui` signal bus
+- [ ] 2.7.7 Handle SDL_QUIT to terminate Runtime
+- [ ] 2.7.8 Store window bounds for hit testing
 
 **Implementation Notes:**
+- Runtime does NOT directly dispatch to components—publishes signals instead
 - Use `Process.send_after/3` for periodic event polling
-- Create a simple event loop (not optimized yet)
-- Hit testing: compare click coordinates to widget bounds
-- For now, use fixed positions (no layout engine yet)
-- Store widget bounds in UI tree for hit testing
+- Create a simple event loop that translates SDL events to signals
+- SDL mouse events → `DesktopUI.Signals.Clicked`
+- SDL keyboard events → `DesktopUI.Signals.KeyPressed`
+- SDL quit → publishes signal, coordinator handles cleanup
+- Store window dimensions for coordinate translation
 - Gracefully handle SDL initialization failures
 - Support fullscreen option in start_link
+
+**Signal Translation:**
+```elixir
+# SDL_MOUSEBUTTONDOWN → Clicked signal
+{:mouse_button_down, :left, x, y} ->
+  {:ok, signal} = DesktopUI.Signals.Clicked.new(%{
+    target_id: nil,  # Determined by hit testing
+    button: :left,
+    x: x,
+    y: y
+  })
+  Jido.Signal.Bus.publish(:desktop_ui, [signal])
+
+# SDL_KEYDOWN → KeyPressed signal
+{:key_down, keycode, modifiers} ->
+  {:ok, signal} = DesktopUI.Signals.KeyPressed.new(%{
+    key: keycode,
+    modifiers: modifiers
+  })
+  Jido.Signal.Bus.publish(:desktop_ui, [signal])
+```
 
 **Unit Tests for Section 2.7:**
 - [ ] 2.7.1 Verify runtime creates SDL window on startup
 - [ ] 2.7.2 Verify runtime polls SDL events
-- [ ] 2.7.3 Verify button click triggers component message
-- [ ] 2.7.4 Verify quit event stops runtime
-- [ ] 2.7.5 Verify render draws to SDL window
-- [ ] 2.7.6 Verify runtime cleans up SDL resources on shutdown
+- [ ] 2.7.3 Verify SDL mouse events publish Clicked signals
+- [ ] 2.7.4 Verify SDL keyboard events publish KeyPressed signals
+- [ ] 2.7.5 Verify quit event publishes appropriate signal
+- [ ] 2.7.6 Verify render draws to SDL window via coordinator
+- [ ] 2.7.7 Verify runtime cleans up SDL resources on shutdown
+- [ ] 2.7.8 Verify SDL initialization failure is handled gracefully
 
 ---
 
@@ -299,10 +327,11 @@ Verify real graphics rendering:
 ## Success Criteria
 
 1. **SDL2 Window Opens**: Counter component displays in a real window
-2. **Click Works**: Clicking buttons triggers state changes
-3. **Visual Feedback**: State changes are visible in the window
-4. **Clean Shutdown**: All SDL resources released on exit
-5. **Cross-Platform**: Works on Linux (primary), with hooks for macOS/Windows
+2. **Signal Flow**: SDL events are translated to Jido signals correctly
+3. **Click Works**: Clicking buttons publishes Clicked signals that trigger state changes
+4. **Visual Feedback**: State changes are visible in the window
+5. **Clean Shutdown**: All SDL resources released on exit
+6. **Cross-Platform**: Works on Linux (primary), with hooks for macOS/Windows
 
 ---
 
@@ -320,11 +349,11 @@ Verify real graphics rendering:
 
 **Modified Files:**
 - `mix.exs` - Add C compilation configuration
-- `lib/desktop_ui/runtime.ex` - Integrate SDL2
-- `lib/desktop_ui/examples/counter.ex` - Update for SDL demo
+- `lib/desktop_ui/runtime.ex` - Integrate SDL2 as event bridge
+- `lib/desktop_ui/signals.ex` - Ensure signals support SDL event data
 
 **Dependencies:**
-- Phase 1: Architecture Validation (Runtime, Elm behaviour, Widget DSL)
+- Phase 1: Jido-First Architecture (Signal infrastructure, Runtime event bridge, Elm behaviour, Widget DSL)
 - SDL2 development libraries (system package)
 
 ---
@@ -332,8 +361,8 @@ Verify real graphics rendering:
 ## Dependencies
 
 **This phase depends on:**
-- Phase 1: Architecture Validation (complete Runtime, Elm behaviour, Widget system)
+- Phase 1: Architecture Validation (complete Signal infrastructure, Runtime event bridge, Elm behaviour, Widget system)
 
 **Phases that depend on this phase:**
-- Phase 3: First Real Widget (depends on Graphics API, SDL2 renderer)
+- Phase 3: First Real Widget (depends on Graphics API, SDL2 renderer, Signal event data)
 - Future phases: Text rendering, advanced widgets

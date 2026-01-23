@@ -2,6 +2,8 @@
 
 This phase completes the proof-of-concept by adding a layout engine and implementing a fully interactive button widget. The layout engine calculates widget positions, enabling proper hit testing and flexible UI composition. This phase delivers a complete, working desktop UI component in Elixir.
 
+**Note:** This phase builds on the Jido-first architecture. The RenderingCoordinator handles layout and hit testing, while click signals are routed through the signal bus to component agents.
+
 ---
 
 ## 3.1 Layout Engine Foundation
@@ -184,11 +186,11 @@ Implement accurate hit testing using calculated layout bounds.
 Create hit testing for widget interaction:
 
 - [ ] 3.6.1 Create `hit_test/3` function - layout tree, x, y
-- [ ] 3.6.2 Return widget ID and message for clicked widget
+- [ ] 3.6.2 Return widget ID and on_click message for clicked widget
 - [ ] 3.6.3 Handle nested containers correctly
 - [ ] 3.6.4 Return nil for clicks outside any widget
 - [ ] 3.6.5 Handle overlapping widgets (topmost wins)
-- [ ] 3.6.6 Store current layout in Runtime for hit testing
+- [ ] 3.6.6 Store current layout in RenderingCoordinator for hit testing
 
 **Implementation Notes:**
 - Traverse layout tree depth-first or reverse for z-order
@@ -197,6 +199,22 @@ Create hit testing for widget interaction:
 - Container widgets don't typically receive clicks
 - Cache hit test results for rapid events
 - Support event bubbling later (propagation to parent)
+- Hit testing is used by Runtime to enrich Clicked signals with target_id
+
+**Signal Flow:**
+```
+SDL Mouse Click → Runtime Hit Test → Clicked Signal (with target_id)
+                                                          ↓
+                                              Component receives signal
+                                                          ↓
+                                               Component updates state
+                                                          ↓
+                                              StateChanged signal
+                                                          ↓
+                                              RenderingCoordinator
+                                                          ↓
+                                           Layout + Render cycle
+```
 
 **Unit Tests for Section 3.6:**
 - [ ] 3.6.1 Verify click inside button returns button's message
@@ -208,36 +226,50 @@ Create hit testing for widget interaction:
 
 ---
 
-## 3.7 Runtime Layout Integration
+## 3.7 RenderingCoordinator Layout Integration
 
-Update Runtime to use layout engine and hit testing.
+Update RenderingCoordinator to calculate layout and perform hit testing for click signals.
 
-- [ ] **Task 3.7** Integrate layout into Runtime
+- [ ] **Task 3.7** Integrate layout into RenderingCoordinator
 
-Complete the rendering pipeline:
+Complete the rendering pipeline with layout:
 
-- [ ] 3.7.1 Update Runtime to calculate layout before rendering
-- [ ] 3.7.2 Store current layout tree in Runtime state
-- [ ] 3.7.3 Use layout for hit testing on mouse events
+- [ ] 3.7.1 Update RenderingCoordinator to calculate layout after view/1
+- [ ] 3.7.2 Store current layout tree in coordinator state
+- [ ] 3.7.3 Add hit_test/2 function for use by Runtime
 - [ ] 3.7.4 Trigger layout recalculation when UI tree changes
-- [ ] 3.7.5 Trigger layout recalculation on window resize
-- [ ] 3.7.6 Optimize to skip layout if nothing changed
+- [ ] 3.7.5 Trigger layout recalculation on window resize (via signal)
+- [ ] 3.7.6 Optimize to skip layout if UI tree unchanged
+- [ ] 3.7.7 Pass layout to renderer for positioning
 
 **Implementation Notes:**
 - Layout pass happens after `view/1`, before renderer
 - Store UI tree version to detect changes
-- Window resize triggers new layout with new bounds
-- Layout bounds come from window size
+- Window resize comes via signal from Runtime
+- Layout bounds come from window dimensions (via signal or stored state)
 - Consider dirty-layout (only recalc changed subtrees)
 - Include timing metrics for performance
+- Coordinator stores layout for Runtime hit testing
+
+**Runtime Integration:**
+```
+Runtime receives SDL click → Calls Coordinator.hit_test/2
+                                                          ↓
+                                            Returns widget target_id
+                                                          ↓
+                              Runtime publishes Clicked signal with target_id
+                                                          ↓
+                                              Component receives signal
+```
 
 **Unit Tests for Section 3.7:**
 - [ ] 3.7.1 Verify layout is calculated after state change
-- [ ] 3.7.2 Verify layout is stored in runtime state
-- [ ] 3.7.3 Verify mouse click uses layout for hit testing
+- [ ] 3.7.2 Verify layout is stored in coordinator state
+- [ ] 3.7.3 Verify Runtime can call hit_test/2 on coordinator
 - [ ] 3.7.4 Verify window resize triggers recalculation
 - [ ] 3.7.5 Verify unchanged UI skips layout calculation
-- [ ] 3.7.6 Verify full pipeline: init → update → view → layout → render
+- [ ] 3.7.6 Verify layout is passed to renderer correctly
+- [ ] 3.7.7 Verify full pipeline: init → update → view → layout → render
 
 ---
 
@@ -314,11 +346,12 @@ Verify the complete desktop UI system:
 
 ## Success Criteria
 
-1. **Working Button**: Clicking increment/decrement buttons updates the display
-2. **Visible Layout**: Spacing, padding, and alignment are clearly visible
-3. **Window Resize**: Resizing window reflows layout correctly
-4. **Accurate Clicks**: Hit testing works precisely for all widgets
-5. **Complete Demo**: Counter component demonstrates full feature set
+1. **Working Button**: Clicking increment/decrement buttons publishes Clicked signals that update state
+2. **Visible Layout**: Spacing, padding, and alignment are clearly visible in rendered output
+3. **Window Resize**: Resizing window triggers signal that reflows layout correctly
+4. **Accurate Clicks**: Hit testing via RenderingCoordinator works precisely for all widgets
+5. **Complete Demo**: Counter component demonstrates full Jido-first architecture
+6. **Signal Flow**: Full event loop visible: SDL click → signal → component update → state change signal → render
 
 ---
 
@@ -334,21 +367,22 @@ Verify the complete desktop UI system:
 - `test/integration/phase_3_integration_test.exs` - Integration tests
 
 **Modified Files:**
+- `lib/desktop_ui/rendering_coordinator.ex` - Integrate layout engine, add hit_test/2
+- `lib/desktop_ui/runtime.ex` - Call coordinator for hit testing
 - `lib/desktop_ui/renderer/sdl2.ex` - Use layout for positioning
-- `lib/desktop_ui/runtime.ex` - Integrate layout engine
 - `lib/desktop_ui/widget.ex` - Add size hint props
-- `lib/desktop_ui/examples/counter.ex` - Enhanced demo
+- `lib/desktop_ui/examples/counter.ex` - Enhanced demo with layout
 
 **Dependencies:**
-- Phase 1: Architecture Validation (Runtime, Elm behaviour, Widget DSL)
-- Phase 2: The Graphics Bridge (SDL2 NIFs, Graphics API, SDL2 Renderer)
+- Phase 1: Jido-First Architecture (RenderingCoordinator, Signal infrastructure, Elm behaviour, Widget DSL)
+- Phase 2: The Graphics Bridge (SDL2 NIFs, Graphics API, SDL2 Renderer, Signal event data)
 
 ---
 
 ## Dependencies
 
 **This phase depends on:**
-- Phase 1: Architecture Validation (complete)
+- Phase 1: Architecture Validation (Jido-first complete)
 - Phase 2: The Graphics Bridge (complete)
 
 **Phases that depend on this phase:**
