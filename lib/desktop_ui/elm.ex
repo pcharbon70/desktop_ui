@@ -1,12 +1,13 @@
 defmodule DesktopUI.Elm do
   @moduledoc """
-  The Elm Architecture behaviour for DesktopUI components.
+  The Elm Architecture behaviour for DesktopUI components with Jido.Agent integration.
 
   This module defines the contract that all UI components must implement,
   following The Elm Architecture (TEA) pattern for predictable state management
-  and unidirectional data flow.
+  and unidirectional data flow, integrated with Jido agents for signal-based
+  communication.
 
-  ## The Elm Architecture
+  ## The Elm Architecture with Jido
 
   TEA consists of three core concepts:
 
@@ -14,49 +15,67 @@ defmodule DesktopUI.Elm do
   2. **Update** - A way to update state based on messages
   3. **View** - A way to render state as UI elements
 
+  With Jido integration, components become autonomous agents that:
+  - Publish state change signals automatically
+  - Handle incoming signals via `on_signal/2`
+  - Communicate with other agents decoupled via the signal bus
+
   ## Component Lifecycle
 
   The lifecycle of a component follows this flow:
 
-  1. `init/1` - Initialize with options, return initial state and commands
-  2. `view/1` - Render current state as a UI tree
-  3. Event occurs (user interaction, system event, etc.)
-  4. `update/2` - Process event, return new state and commands
-  5. If state changed, `view/1` is called again
-  6. Loop continues
+  1. Agent starts with `use Jido.Agent`
+  2. `init/1` - Initialize with options, return initial state and commands
+  3. `view/1` - Render current state as a UI tree
+  4. Signal arrives (e.g., Clicked, KeyPressed)
+  5. `on_signal/2` - Process signal, optionally call `handle_ui_signal/2`
+  6. `handle_ui_signal/2` - Calls `update/2` with message
+  7. If state changed, `StateChanged` signal is auto-published
+  8. RenderingCoordinator receives signal and triggers render
+  9. Loop continues
 
   ## Using This Behaviour
 
   To create a component, `use DesktopUI.Elm` in your module:
 
       defmodule MyComponent do
-        use DesktopUI.Elm
+        use DesktopUI.Elm,
+          name: "my_component",
+          description: "A sample component"
 
         @impl true
-        def init(opts) do
+        def init(_opts) do
           # Initialize state from options
-          initial_state = %{}
+          initial_state = %{count: 0}
           {initial_state, []}
         end
 
         @impl true
-        def update(msg, state) do
+        def update(:increment, %{count: count} = state) do
           # Handle message, return new state and commands
-          new_state = process_message(msg, state)
+          new_state = %{state | count: count + 1}
           {new_state, []}
         end
 
         @impl true
-        def view(state) do
+        def view(%{count: count}) do
           # Return UI tree describing what to render
           # See DesktopUI.Widget for constructors
-          DesktopUI.Widget.label("Hello, World!")
+          DesktopUI.Widget.label("Count: " <> Integer.to_string(count))
+        end
+
+        @impl true
+        def on_signal(agent, signal) do
+          # Optional: Handle custom signals
+          {:ok, agent}
         end
       end
 
-  The `use DesktopUI.Elm` macro generates default implementations of all
-  required callbacks that raise helpful error messages, so you only need to
-  implement the callbacks you actually use.
+  The `use DesktopUI.Elm` macro:
+  1. Includes `use Jido.Agent` for agent capabilities
+  2. Defines `@behaviour DesktopUI.Elm`
+  3. Generates default implementations that raise helpful errors
+  4. Makes the `DesktopUI.Widget` module available as `Widget`
 
   ## Type Specifications
 
@@ -65,20 +84,19 @@ defmodule DesktopUI.Elm do
   - `command/0` - Side effects to execute after state updates
   - `ui_element/0` - The UI tree returned by `view/1`
 
-  ## Commands
+  ## Signals
 
-  Commands represent side effects that should be executed after state updates.
-  They are returned from `init/1` and `update/2` as a list.
+  Components automatically publish a `StateChanged` signal after each
+  successful state update. This signal includes:
+  - `component_id` - Unique identifier for the component
+  - `old_state` - The state before the update
+  - `new_state` - The state after the update
 
-  Examples of commands:
-  - Emitting a signal to other components
-  - Scheduling a delayed message
-  - Performing I/O operations
-  - Requesting runtime actions (quit, focus, etc.)
-
-  Commands are executed by the Runtime after the state has been updated.
+  Components can also receive signals via the `on_signal/2` callback.
 
   """
+
+  alias DesktopUI.Signals
 
   @doc """
   Initialize the component with options.
@@ -136,10 +154,6 @@ defmodule DesktopUI.Elm do
         {new_state, []}
       end
 
-      def update({:set, value}, state) do
-        {state, []}
-      end
-
   """
   @callback update(message(), state()) :: {state(), [command()]}
 
@@ -162,9 +176,9 @@ defmodule DesktopUI.Elm do
 
   ## Example
 
-      def view(%{count: count}) do
+      def view(state) do
         DesktopUI.Widget.container(:vbox, [
-          DesktopUI.Widget.label("Count: \#{count}"),
+          DesktopUI.Widget.label("Counter"),
           DesktopUI.Widget.button("Increment", :increment),
           DesktopUI.Widget.button("Decrement", :decrement)
         ], spacing: 8)
@@ -172,6 +186,38 @@ defmodule DesktopUI.Elm do
 
   """
   @callback view(state()) :: ui_element()
+
+  @doc """
+  Handle an incoming signal.
+
+  Called when a signal is received from the signal bus. Components can
+  override this to handle custom signal types.
+
+  ## Parameters
+
+  - `agent` - The Jido.Agent struct
+  - `signal` - The Jido.Signal struct received
+
+  ## Returns
+
+  `{:ok, agent}` with the updated agent state, or `{:error, reason}`
+
+  ## Example
+
+      @impl true
+      def on_signal(agent, %Signals.Clicked{data: %{target_id: :btn_save}}) do
+        # Handle save button click
+        DesktopUI.Elm.handle_ui_signal(agent, :save)
+      end
+
+      def on_signal(agent, _signal) do
+        # Ignore other signals
+        {:ok, agent}
+      end
+
+  """
+  @callback on_signal(agent :: Jido.Agent.t(), signal :: Jido.Signal.t()) ::
+              {:ok, Jido.Agent.t()} | {:error, term()}
 
   # Type Definitions
 
@@ -259,14 +305,29 @@ defmodule DesktopUI.Elm do
   Using macro for scaffolding component boilerplate.
 
   When `use DesktopUI.Elm` is called, this macro:
-  1. Imports the `@behaviour DesktopUI.Elm` directive
-  2. Generates default implementations that raise helpful errors
-  3. Makes the `DesktopUI.Widget` module available as `Widget`
+  1. Includes `use Jido.Agent` for agent capabilities
+  2. Imports the `@behaviour DesktopUI.Elm` directive
+  3. Generates default implementations that raise helpful errors
+  4. Makes the `DesktopUI.Widget` module available as `Widget`
+  5. Adds default `on_signal/2` implementation
+
+  ## Options
+
+  All options are passed to `use Jido.Agent`. Common options:
+  - `:name` - Agent name (required)
+  - `:description` - Agent description
+  - `:category` - Agent category
+  - `:tags` - List of tags
 
   """
-  defmacro __using__(_opts) do
+  defmacro __using__(opts) do
     quote do
+      use Jido.Agent, unquote(opts)
+
       @behaviour DesktopUI.Elm
+
+      # Import Widget for convenience
+      import DesktopUI.Widget, only: [label: 2, button: 3, container: 3]
 
       @impl true
       def init(_opts) do
@@ -315,7 +376,142 @@ defmodule DesktopUI.Elm do
         """
       end
 
-      defoverridable init: 1, update: 2, view: 1
+      @impl true
+      def on_signal(agent, _signal) do
+        # Default implementation: ignore signals
+        {:ok, agent}
+      end
+
+      # Jido.Agent lifecycle hook to initialize Elm state
+      @impl true
+      def on_before_run(agent) do
+        # Initialize Elm state if not already set
+        elm_state = Map.get(agent.state, :elm_state)
+
+        if is_nil(elm_state) do
+          # Call init/1 to get initial state
+          {initial_elm_state, _commands} = apply(__MODULE__, :init, [[]])
+
+          new_state =
+            Map.put(agent.state, :elm_state, initial_elm_state)
+            |> Map.put(:component_id, agent.id || to_string(__MODULE__))
+
+          {:ok, %{agent | state: new_state}}
+        else
+          {:ok, agent}
+        end
+      end
+
+      defoverridable init: 1, update: 2, view: 1, on_signal: 2, on_before_run: 1
+    end
+  end
+
+  @doc """
+  Handle a UI message by calling the component's update/2 callback.
+
+  This helper function is intended to be called from within a component's
+  `on_signal/2` callback to process UI messages through the standard
+  update mechanism.
+
+  After calling update/2, this function automatically publishes a
+  `StateChanged` signal if the state changed.
+
+  ## Parameters
+
+  - `agent` - The Jido.Agent struct
+  - `message` - The message to pass to update/2
+
+  ## Returns
+
+  `{:ok, agent}` with updated state, or `{:error, reason}`
+
+  ## Example
+
+      @impl true
+      def on_signal(agent, %Signals.Clicked{data: %{target_id: :btn_increment}}) do
+        DesktopUI.Elm.handle_ui_signal(agent, :increment)
+      end
+
+  """
+  def handle_ui_signal(agent, message) when is_map(agent) and map_size(agent) > 0 do
+    # Initialize elm_state if not already set
+    agent =
+      if is_nil(Map.get(agent.state, :elm_state)) do
+        module = agent.__struct__
+        {initial_elm_state, _commands} = apply(module, :init, [[]])
+        component_id = Map.get(agent.state, :component_id, agent.id || to_string(module))
+
+        new_agent_state =
+          agent.state
+          |> Map.put(:elm_state, initial_elm_state)
+          |> Map.put(:component_id, component_id)
+
+        %{agent | state: new_agent_state}
+      else
+        agent
+      end
+
+    elm_state = Map.get(agent.state, :elm_state)
+    module = agent.__struct__
+
+    case apply(module, :update, [message, elm_state]) do
+      {new_elm_state, _commands} ->
+        old_state = elm_state
+        component_id = Map.get(agent.state, :component_id, to_string(agent.__struct__))
+
+        # Update agent state
+        new_agent_state =
+          Map.put(agent.state, :elm_state, new_elm_state)
+
+        updated_agent = %{agent | state: new_agent_state}
+
+        # Publish StateChanged signal
+        if old_state != new_elm_state do
+          publish_state_changed(component_id, old_state, new_elm_state)
+        end
+
+        {:ok, updated_agent}
+
+      :error ->
+        {:error, :update_error}
+    end
+  end
+
+  @doc """
+  Get the component's Elm state from an agent.
+
+  ## Parameters
+
+  - `agent` - The Jido.Agent struct
+
+  ## Returns
+
+  The component's Elm state, or nil if not initialized.
+
+  """
+  def get_elm_state(agent) when is_map(agent) do
+    agent_state = Map.get(agent, :state, %{})
+    Map.get(agent_state, :elm_state)
+  end
+
+  # Private function to publish state change signal
+  defp publish_state_changed(component_id, old_state, new_state) do
+    case Signals.StateChanged.new(%{
+      component_id: component_id,
+      old_state: old_state,
+      new_state: new_state
+    }) do
+      {:ok, signal} ->
+        # Publish to signal bus if it's available
+        try do
+          Jido.Signal.Bus.publish(:desktop_ui, [signal])
+        rescue
+          _ -> # Signal bus may not be started in tests
+            :ok
+        end
+
+      {:error, _} ->
+        :ok
     end
   end
 end
