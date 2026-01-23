@@ -78,19 +78,19 @@ Define the core widget data structure and helper functions:
 
 Add Jido dependencies and create the signal-based infrastructure for agent communication.
 
-- [ ] **Task 1.3** Add Jido dependencies and create signal infrastructure
+- [x] **Task 1.3** Add Jido dependencies and create signal infrastructure
 
 Implement the foundation for Jido-based architecture:
 
-- [ ] 1.3.1 Add `{:jido, "~> 1.2"}` to mix.exs dependencies
-- [ ] 1.3.2 Add `{:jido_signal, "~> 1.2"}` to mix.exs dependencies
-- [ ] 1.3.3 Add `{:jido_action, "~> 1.0"}` to mix.exs dependencies
-- [ ] 1.3.4 Run `mix deps.get` and verify compilation
-- [ ] 1.3.5 Create `DesktopUI.Signals` module with UI signal types
-- [ ] 1.3.6 Define `StateChanged` signal for component state changes
-- [ ] 1.3.7 Define `Clicked` signal for mouse click events
-- [ ] 1.3.8 Define `KeyPressed` signal for keyboard events
-- [ ] 1.3.9 Define `RenderRequest` signal for rendering coordination
+- [x] 1.3.1 Add `{:jido, "~> 1.2"}` to mix.exs dependencies
+- [x] 1.3.2 Add `{:jido_signal, "~> 1.2"}` to mix.exs dependencies
+- [x] 1.3.3 Add `{:jido_action, "~> 1.0"}` to mix.exs dependencies
+- [x] 1.3.4 Run `mix deps.get` and verify compilation
+- [x] 1.3.5 Create `DesktopUI.Signals` module with UI signal types
+- [x] 1.3.6 Define `StateChanged` signal for component state changes
+- [x] 1.3.7 Define `Clicked` signal for mouse click events
+- [x] 1.3.8 Define `KeyPressed` signal for keyboard events
+- [x] 1.3.9 Define `RenderRequest` signal for rendering coordination
 
 **Implementation Notes:**
 - Use `use Jido.Signal` macro for signal type definitions
@@ -100,12 +100,14 @@ Implement the foundation for Jido-based architecture:
 - Include source tracking for debugging and causality
 
 **Unit Tests for Section 1.3:**
-- [ ] 1.3.1 Verify Jido dependencies compile without errors
-- [ ] 1.3.2 Verify StateChanged signal validates component_id and states
-- [ ] 1.3.3 Verify Clicked signal validates target_id and button
-- [ ] 1.3.4 Verify KeyPressed signal validates key and modifiers
-- [ ] 1.3.5 Verify RenderRequest signal validates component_id
-- [ ] 1.3.6 Verify signals serialize to JSON correctly
+- [x] 1.3.1 Verify Jido dependencies compile without errors
+- [x] 1.3.2 Verify StateChanged signal validates component_id and states
+- [x] 1.3.3 Verify Clicked signal validates target_id and button
+- [x] 1.3.4 Verify KeyPressed signal validates key and modifiers
+- [x] 1.3.5 Verify RenderRequest signal validates component_id
+- [x] 1.3.6 Verify signals serialize to JSON correctly
+
+**Status:** Completed 2025-01-23 - See `notes/summaries/section-1.3-jido-integration.md` for details.
 
 ---
 
