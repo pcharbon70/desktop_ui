@@ -149,38 +149,42 @@ Update Elm behaviour for agent-based components:
 
 ## 1.5 RenderingCoordinator Agent
 
-Create the agent that subscribes to state changes and orchestrates rendering.
+Create the coordinator that subscribes to state changes and orchestrates rendering.
 
-- [ ] **Task 1.5** Create `DesktopUI.RenderingCoordinator` agent
+- [x] **Task 1.5** Create `DesktopUI.RenderingCoordinator` coordinator
 
-Implement the rendering coordination agent:
+Implement the rendering coordination coordinator:
 
-- [ ] 1.5.1 Define agent with `use Jido.Agent` for agent capabilities
-- [ ] 1.5.2 Implement `init/1` to subscribe to state_change signals
-- [ ] 1.5.3 Create component registry for tracking active components
-- [ ] 1.5.4 Implement signal handler for StateChanged signals
-- [ ] 1.5.5 Call component's view/1 when state changes
-- [ ] 1.5.6 Validate widget tree before rendering
-- [ ] 1.5.7 Pass validated tree to renderer module
-- [ ] 1.5.8 Add register_component/3 and unregister_component/2 functions
+- [x] 1.5.1 Define coordinator with `use GenServer` (changed from Jido.Agent for direct signal handling)
+- [x] 1.5.2 Implement `init/1` to subscribe to state_change signals
+- [x] 1.5.3 Create ETS-backed component registry for tracking active components
+- [x] 1.5.4 Implement signal handler for StateChanged signals
+- [x] 1.5.5 Call component's view/1 when state changes
+- [x] 1.5.6 Validate widget tree before rendering
+- [x] 1.5.7 Pass validated tree to renderer module
+- [x] 1.5.8 Add register_component/4 and unregister_component/3 functions (signal-based)
 
 **Implementation Notes:**
-- Subscribe to `"desktop_ui.state.**"` signal pattern
-- Store component PIDs and modules for view/1 calls
-- Use Jido.Signal.Bus.subscribe/3 for subscriptions
-- Renderer module is dependency-injected for testing
+- Subscribe to `"desktop_ui.**"` signal pattern for all desktop_ui signals
+- Store component PIDs and modules in ETS for persistence
+- Use `Jido.Signal.Bus.subscribe/3` with `dispatch: {:pid, target: self()}`
+- Renderer module is dependency-injected for testing (module or {module, name})
 - Handle rendering errors gracefully without crashing
-- Support render request signals for forced redraws
-- Track pending renders for metrics
+- Support RenderRequest signals for forced redraws
+- Track render metrics (completed, failed, skipped) in ETS
 
 **Unit Tests for Section 1.5:**
-- [ ] 1.5.1 Verify coordinator subscribes to state_change signals
-- [ ] 1.5.2 Verify component registration works
-- [ ] 1.5.3 Verify coordinator calls view/1 on state change
-- [ ] 1.5.4 Verify coordinator validates widget trees
-- [ ] 1.5.5 Verify coordinator passes tree to renderer
-- [ ] 1.5.6 Verify coordinator handles render errors
-- [ ] 1.5.7 Verify component unregistration works
+- [x] 1.5.1 Verify coordinator subscribes to state_change signals
+- [x] 1.5.2 Verify component registration works
+- [x] 1.5.3 Verify coordinator calls view/1 on state change
+- [x] 1.5.4 Verify coordinator validates widget trees
+- [x] 1.5.5 Verify coordinator passes tree to renderer
+- [x] 1.5.6 Verify coordinator handles render errors
+- [x] 1.5.7 Verify component unregistration works
+
+**Status:** Completed 2025-01-23 - See `notes/summaries/section-1.5-rendering-coordinator.md` for details.
+
+**Architectural Note:** After investigation, Jido.Agent was found to be unsuitable for the RenderingCoordinator use case. The coordinator requires direct `handle_info/2` access to signals from the bus, predictable initialization via `init/1`, and full control over state management. Converting to GenServer enabled these requirements while maintaining signal-based architecture.
 
 ---
 

@@ -178,6 +178,61 @@ defmodule DesktopUI.Signals do
   end
 
   @doc """
+  Signal published to register a component with the RenderingCoordinator.
+
+  Components must be registered before they will be rendered on state changes.
+  This signal should be published when a component agent starts.
+
+  ## Fields
+
+  - `component_id` - Unique identifier for the component (required)
+  - `module` - The component module name (required)
+  - `pid` - The component agent's PID (optional)
+  """
+  defmodule ComponentRegister do
+    use Jido.Signal,
+      type: "desktop_ui.component.register",
+      default_source: "/desktop_ui/components",
+      schema: [
+        component_id: [
+          type: :string,
+          required: true,
+          doc: "Unique identifier for the component"
+        ],
+        module: [
+          type: :atom,
+          required: true,
+          doc: "The component module name"
+        ],
+        pid: [
+          type: :pid,
+          required: false,
+          doc: "The component agent's PID"
+        ]
+      ]
+  end
+
+  @doc """
+  Signal published to unregister a component from the RenderingCoordinator.
+
+  ## Fields
+
+  - `component_id` - Unique identifier for the component (required)
+  """
+  defmodule ComponentUnregister do
+    use Jido.Signal,
+      type: "desktop_ui.component.unregister",
+      default_source: "/desktop_ui/components",
+      schema: [
+        component_id: [
+          type: :string,
+          required: true,
+          doc: "Unique identifier for the component"
+        ]
+      ]
+  end
+
+  @doc """
   Signal published when the window is resized.
 
   The Runtime publishes this signal when it receives an SDL window
