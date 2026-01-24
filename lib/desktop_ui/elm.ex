@@ -97,6 +97,7 @@ defmodule DesktopUI.Elm do
   """
 
   alias DesktopUI.Signals
+  require Logger
 
   @doc """
   Initialize the component with options.
@@ -455,7 +456,7 @@ defmodule DesktopUI.Elm do
     module = agent.__struct__
 
     case apply(module, :update, [message, elm_state]) do
-      {new_elm_state, _commands} ->
+      {new_elm_state, commands} ->
         old_state = elm_state
         component_id = Map.get(agent.state, :component_id, to_string(agent.__struct__))
 
@@ -470,7 +471,11 @@ defmodule DesktopUI.Elm do
           publish_state_changed(component_id, old_state, new_elm_state)
         end
 
-        {:ok, updated_agent}
+        # Execute commands
+        case execute_commands(updated_agent, commands, component_id) do
+          {:ok, final_agent} -> {:ok, final_agent}
+          {:error, _} = error -> error
+        end
 
       :error ->
         {:error, :update_error}
@@ -494,19 +499,103 @@ defmodule DesktopUI.Elm do
     Map.get(agent_state, :elm_state)
   end
 
+  # Private function to execute commands returned from init/1 and update/2
+  defp execute_commands(agent, commands, component_id) when is_list(commands) do
+    # Execute commands in order, accumulating the agent state
+    Enum.reduce_while(commands, {:ok, agent}, fn command, {:ok, acc_agent} ->
+      case execute_command(acc_agent, command, component_id) do
+        {:ok, updated_agent} -> {:cont, {:ok, updated_agent}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp execute_commands(agent, _commands, _component_id), do: {:ok, agent}
+
+  # Private function to execute a single command
+  defp execute_command(agent, :none, _component_id), do: {:ok, agent}
+
+  defp execute_command(agent, {:emit, signal_data}, component_id) do
+    # Create a generic signal from the data
+    # signal_data should be a map with at least :type
+    case create_signal(signal_data, component_id) do
+      {:ok, signal} ->
+        try do
+          Jido.Signal.Bus.publish(:desktop_ui, [signal])
+          {:ok, agent}
+        rescue
+          error ->
+            # Signal bus not available, continue anyway
+            Logger.debug("Signal bus not available for component #{component_id}: #{inspect(error)}")
+            {:ok, agent}
+        end
+
+      {:error, reason} ->
+        # Invalid signal data, continue anyway
+        Logger.warning("Invalid signal data for component #{component_id}: #{inspect(reason)}")
+        {:ok, agent}
+    end
+  end
+
+  defp execute_command(agent, {:send, pid, message}, _component_id) when is_pid(pid) do
+    send(pid, message)
+    {:ok, agent}
+  end
+
+  defp execute_command(agent, {:send, _pid, _message}, _component_id) do
+    # Invalid PID, continue anyway
+    {:ok, agent}
+  end
+
+  defp execute_command(agent, {:after, milliseconds, message}, _component_id)
+       when is_integer(milliseconds) and milliseconds > 0 do
+    Process.send_after(self(), message, milliseconds)
+    {:ok, agent}
+  end
+
+  defp execute_command(agent, {:after, _milliseconds, _message}, _component_id) do
+    # Invalid delay, continue anyway
+    {:ok, agent}
+  end
+
+  defp execute_command(_agent, :quit, _component_id) do
+    # Quit command - signal to stop
+    {:error, :quit}
+  end
+
+  defp execute_command(agent, _unknown, _component_id) do
+    # Unknown command, continue anyway
+    {:ok, agent}
+  end
+
+  # Helper to create a signal from data
+  defp create_signal(data, component_id) do
+    # Build signal type if not provided
+    type = Map.get(data, :type, "desktop_ui.custom")
+
+    # Add component_id to data if not present
+    data_with_id = Map.put(data, :component_id, component_id)
+
+    # Use Jido.Signal.new/2 to create the signal
+    Jido.Signal.new(type, data_with_id,
+      source: Map.get(data, :source, "/desktop_ui/#{component_id}")
+    )
+  end
+
   # Private function to publish state change signal
   defp publish_state_changed(component_id, old_state, new_state) do
     case Signals.StateChanged.new(%{
-      component_id: component_id,
-      old_state: old_state,
-      new_state: new_state
-    }) do
+           component_id: component_id,
+           old_state: old_state,
+           new_state: new_state
+         }) do
       {:ok, signal} ->
         # Publish to signal bus if it's available
         try do
           Jido.Signal.Bus.publish(:desktop_ui, [signal])
         rescue
-          _ -> # Signal bus may not be started in tests
+          # Signal bus may not be started in tests
+          _ ->
             :ok
         end
 

@@ -35,10 +35,11 @@ defmodule DesktopUI.ElmJidoTest do
   describe "init/1 callback" do
     test "init is called when agent starts" do
       # Start an agent server
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        name: :test_init_counter
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          name: :test_init_counter
+        )
 
       # Get the agent from the server state
       {:ok, server_state} = Jido.Agent.Server.state(pid)
@@ -60,10 +61,11 @@ defmodule DesktopUI.ElmJidoTest do
 
     test "init with custom options" do
       # Start an agent server
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCustomInit,
-        name: :test_custom_init
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCustomInit,
+          name: :test_custom_init
+        )
 
       # Get the agent from the server state
       {:ok, server_state} = Jido.Agent.Server.state(pid)
@@ -87,18 +89,21 @@ defmodule DesktopUI.ElmJidoTest do
 
       # Subscribe to state changes
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # Start agent
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        id: "test_counter",
-        name: :test_counter_bus
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          id: "test_counter",
+          name: :test_counter_bus
+        )
 
       # Get current agent from server state
       {:ok, server_state} = Jido.Agent.Server.state(pid)
@@ -122,10 +127,11 @@ defmodule DesktopUI.ElmJidoTest do
     end
 
     test "handle_ui_signal with decrement message" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        name: :test_decrement
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          name: :test_decrement
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
@@ -143,10 +149,11 @@ defmodule DesktopUI.ElmJidoTest do
     end
 
     test "handle_ui_signal with reset message" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        name: :test_reset
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          name: :test_reset
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
@@ -168,10 +175,11 @@ defmodule DesktopUI.ElmJidoTest do
 
   describe "view/1 callback" do
     test "view returns valid widget tree" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        name: :test_view
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          name: :test_view
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
@@ -194,22 +202,25 @@ defmodule DesktopUI.ElmJidoTest do
 
   describe "on_signal/2 callback" do
     test "custom on_signal handles specific signals" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestSignalHandler,
-        name: :test_signal_handler
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestSignalHandler,
+          name: :test_signal_handler
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
 
       # Create a Clicked signal
-      {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :btn_click,
-        button: :left
-      })
+      {:ok, signal} =
+        Signals.Clicked.new(%{
+          target_id: :btn_click,
+          button: :left
+        })
 
       # Call on_signal
-      assert {:ok, updated_agent} = DesktopUI.ElmJidoTest.TestSignalHandler.on_signal(agent, signal)
+      assert {:ok, updated_agent} =
+               DesktopUI.ElmJidoTest.TestSignalHandler.on_signal(agent, signal)
 
       # The signal handler should have called update(:set_clicked, state)
       assert updated_agent.state.elm_state.clicked == true
@@ -219,10 +230,11 @@ defmodule DesktopUI.ElmJidoTest do
     end
 
     test "custom on_signal ignores unhandled signals" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestSignalHandler,
-        name: :test_ignore_signal
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestSignalHandler,
+          name: :test_ignore_signal
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
@@ -230,13 +242,15 @@ defmodule DesktopUI.ElmJidoTest do
       initial_state = agent.state
 
       # Create a different Clicked signal
-      {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :other_button,
-        button: :left
-      })
+      {:ok, signal} =
+        Signals.Clicked.new(%{
+          target_id: :other_button,
+          button: :left
+        })
 
       # Call on_signal - should be ignored by catch-all
-      assert {:ok, returned_agent} = DesktopUI.ElmJidoTest.TestSignalHandler.on_signal(agent, signal)
+      assert {:ok, returned_agent} =
+               DesktopUI.ElmJidoTest.TestSignalHandler.on_signal(agent, signal)
 
       # State should be unchanged
       assert returned_agent.state == initial_state
@@ -248,10 +262,11 @@ defmodule DesktopUI.ElmJidoTest do
 
   describe "get_elm_state/1" do
     test "returns the component's elm state" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        name: :test_get_state
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          name: :test_get_state
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
@@ -282,21 +297,24 @@ defmodule DesktopUI.ElmJidoTest do
       {:ok, _bus} = Jido.Signal.Bus.start_link(name: :desktop_ui)
 
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       :ok
     end
 
     test "publishes signal when state changes" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        id: "test_counter",
-        name: :test_state_change
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          id: "test_counter",
+          name: :test_state_change
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
@@ -315,11 +333,12 @@ defmodule DesktopUI.ElmJidoTest do
     end
 
     test "does not publish signal when state is unchanged" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestNoOp,
-        id: "test_noop",
-        name: :test_noop_state
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestNoOp,
+          id: "test_noop",
+          name: :test_noop_state
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent
@@ -339,11 +358,12 @@ defmodule DesktopUI.ElmJidoTest do
     end
 
     test "includes old_state and new_state in signal" do
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.ElmJidoTest.TestCounter,
-        id: "test_counter_old_new",
-        name: :test_old_new
-      )
+      {:ok, pid} =
+        Jido.Agent.Server.start_link(
+          agent: DesktopUI.ElmJidoTest.TestCounter,
+          id: "test_counter_old_new",
+          name: :test_old_new
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(pid)
       agent = server_state.agent

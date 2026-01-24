@@ -34,6 +34,10 @@ defmodule DesktopUI.Examples.Counter do
       )
   """
 
+  # Note: DesktopUI.Elm behaviour defines init/1 which conflicts with GenServer's init/1.
+  # This is expected - the Elm init/1 is for component state, not server initialization.
+  @compile {:nowarn_callback_conflict, init: 1}
+
   use DesktopUI.Elm,
     name: "counter",
     description: "A simple counter component demonstrating the Elm Architecture",
@@ -86,26 +90,36 @@ defmodule DesktopUI.Examples.Counter do
     #     - Decrement button (-)
     #     - Reset button
 
-    container(:vbox, [
-      label("Counter Demo", id: :title),
-      label("Current: #{count}", id: :count_label),
-      container(:hbox, [
-        button("+", :increment, id: :btn_increment),
-        button("-", :decrement, id: :btn_decrement),
-        button("Reset", :reset, id: :btn_reset)
-      ], spacing: 4)
-    ], spacing: 8, padding: 16)
+    container(
+      :vbox,
+      [
+        label("Counter Demo", id: :title),
+        label("Current: #{count}", id: :count_label),
+        container(
+          :hbox,
+          [
+            button("+", :increment, id: :btn_increment),
+            button("-", :decrement, id: :btn_decrement),
+            button("Reset", :reset, id: :btn_reset)
+          ],
+          spacing: 4
+        )
+      ],
+      spacing: 8,
+      padding: 16
+    )
   end
 
   @impl true
   def on_signal(agent, %Jido.Signal{type: "desktop_ui.ui.clicked", data: %{target_id: target_id}}) do
     # Handle Clicked signals by mapping target_id to messages
-    message = case target_id do
-      :btn_increment -> :increment
-      :btn_decrement -> :decrement
-      :btn_reset -> :reset
-      _ -> nil
-    end
+    message =
+      case target_id do
+        :btn_increment -> :increment
+        :btn_decrement -> :decrement
+        :btn_reset -> :reset
+        _ -> nil
+      end
 
     if message do
       # Use handle_ui_signal to process through update/2

@@ -28,11 +28,13 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     @impl true
     def init(opts) do
       name = Keyword.get(opts, :name, __MODULE__)
-      {:ok, %{
-        renders: [],
-        render_count: 0,
-        name: name
-      }}
+
+      {:ok,
+       %{
+         renders: [],
+         render_count: 0,
+         name: name
+       }}
     end
 
     @doc """
@@ -68,10 +70,12 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     @impl true
     def handle_call({:render, component_id, widget}, _from, state) do
       render = %{component_id: component_id, widget: widget, timestamp: DateTime.utc_now()}
+
       new_state = %{
         renders: [render | state.renders],
         render_count: state.render_count + 1
       }
+
       {:reply, :ok, new_state}
     end
 
@@ -126,10 +130,14 @@ defmodule DesktopUI.RenderingCoordinatorTest do
 
     @impl true
     def view(%{count: _count}) do
-      Widget.container(:vbox, [
-        Widget.label("Counter"),
-        Widget.button("Increment", :increment)
-      ], spacing: 8)
+      Widget.container(
+        :vbox,
+        [
+          Widget.label("Counter"),
+          Widget.button("Increment", :increment)
+        ],
+        spacing: 8
+      )
     end
   end
 
@@ -140,6 +148,7 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     rescue
       ArgumentError -> nil
     end
+
     try do
       :ets.delete(@metrics_table)
     rescue
@@ -164,10 +173,11 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     test "starts with default configuration" do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_init_bus)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        bus: :test_init_bus,
-        name: :test_init_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          bus: :test_init_bus,
+          name: :test_init_coordinator
+        )
 
       # Give time for init to complete
       Process.sleep(100)
@@ -187,11 +197,12 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_custom_renderer_bus)
       {:ok, _renderer} = MockRenderer.start_link(name: :test_custom_renderer)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        renderer: {MockRenderer, :test_custom_renderer},
-        bus: :test_custom_renderer_bus,
-        name: :test_coordinator_custom_renderer
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: {MockRenderer, :test_custom_renderer},
+          bus: :test_custom_renderer_bus,
+          name: :test_coordinator_custom_renderer
+        )
 
       Process.sleep(100)
 
@@ -209,10 +220,11 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       # Start signal bus
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_subscription_bus)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        bus: :test_subscription_bus,
-        name: :test_subscription_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          bus: :test_subscription_bus,
+          name: :test_subscription_coordinator
+        )
 
       Process.sleep(100)
 
@@ -229,14 +241,18 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     test "register_component/4 registers a component" do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_register_bus)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        bus: :test_register_bus,
-        name: :test_register_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          bus: :test_register_bus,
+          name: :test_register_coordinator
+        )
 
       Process.sleep(100)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(pid, "test_component", TestComponent, bus: :test_register_bus)
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(pid, "test_component", TestComponent,
+          bus: :test_register_bus
+        )
 
       # Give time for signal to be processed
       Process.sleep(50)
@@ -255,22 +271,24 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     test "register_component/4 with opts stores PID" do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_register_pid_bus)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        bus: :test_register_pid_bus,
-        name: :test_register_with_pid
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          bus: :test_register_pid_bus,
+          name: :test_register_with_pid
+        )
 
       Process.sleep(100)
 
       component_pid = self()
 
-      {:ok, _signal} = RenderingCoordinator.register_component(
-        pid,
-        "test_component",
-        TestComponent,
-        pid: component_pid,
-        bus: :test_register_pid_bus
-      )
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(
+          pid,
+          "test_component",
+          TestComponent,
+          pid: component_pid,
+          bus: :test_register_pid_bus
+        )
 
       Process.sleep(50)
 
@@ -285,14 +303,19 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     test "registering same component twice overwrites" do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_register_twice_bus)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        bus: :test_register_twice_bus,
-        name: :test_register_twice
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          bus: :test_register_twice_bus,
+          name: :test_register_twice
+        )
 
       Process.sleep(100)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(pid, "test_component", TestComponent, bus: :test_register_twice_bus)
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(pid, "test_component", TestComponent,
+          bus: :test_register_twice_bus
+        )
+
       Process.sleep(50)
 
       first_components = RenderingCoordinator.get_components(pid)
@@ -301,21 +324,23 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       # Wait a bit to ensure different timestamp
       Process.sleep(10)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(
-        pid,
-        "test_component",
-        TestComponentWithContainer,
-        bus: :test_register_twice_bus
-      )
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(
+          pid,
+          "test_component",
+          TestComponentWithContainer,
+          bus: :test_register_twice_bus
+        )
+
       Process.sleep(50)
 
       second_components = RenderingCoordinator.get_components(pid)
       assert second_components["test_component"].module == TestComponentWithContainer
       # Timestamp should be updated
       assert DateTime.compare(
-        second_components["test_component"].registered_at,
-        first_registered_at
-      ) != :eq
+               second_components["test_component"].registered_at,
+               first_registered_at
+             ) != :eq
 
       # Cleanup
       GenServer.stop(pid)
@@ -325,17 +350,25 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     test "unregister_component/2 removes a component" do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_unregister_bus)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        bus: :test_unregister_bus,
-        name: :test_unregister_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          bus: :test_unregister_bus,
+          name: :test_unregister_coordinator
+        )
 
       Process.sleep(100)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(pid, "test_component", TestComponent, bus: :test_unregister_bus)
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(pid, "test_component", TestComponent,
+          bus: :test_unregister_bus
+        )
+
       Process.sleep(50)
 
-      {:ok, _signal} = RenderingCoordinator.unregister_component(pid, "test_component", bus: :test_unregister_bus)
+      {:ok, _signal} =
+        RenderingCoordinator.unregister_component(pid, "test_component",
+          bus: :test_unregister_bus
+        )
 
       Process.sleep(50)
 
@@ -351,15 +384,19 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     test "unregistering non-existent component is idempotent" do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_unregister_nonexistent_bus)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        bus: :test_unregister_nonexistent_bus,
-        name: :test_unregister_nonexistent
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          bus: :test_unregister_nonexistent_bus,
+          name: :test_unregister_nonexistent
+        )
 
       Process.sleep(100)
 
       # Should not error
-      assert {:ok, _signal} = RenderingCoordinator.unregister_component(pid, "nonexistent", bus: :test_unregister_nonexistent_bus)
+      assert {:ok, _signal} =
+               RenderingCoordinator.unregister_component(pid, "nonexistent",
+                 bus: :test_unregister_nonexistent_bus
+               )
 
       Process.sleep(50)
 
@@ -371,9 +408,7 @@ defmodule DesktopUI.RenderingCoordinatorTest do
 
   describe "metrics" do
     test "get_metrics/1 returns current metrics" do
-      {:ok, pid} = RenderingCoordinator.start_link(
-        name: :test_get_metrics_coordinator
-      )
+      {:ok, pid} = RenderingCoordinator.start_link(name: :test_get_metrics_coordinator)
 
       Process.sleep(100)
 
@@ -394,26 +429,32 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_render_bus)
       {:ok, _renderer} = MockRenderer.start_link(name: :test_render_renderer)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        renderer: {MockRenderer, :test_render_renderer},
-        bus: :test_render_bus,
-        name: :test_render_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: {MockRenderer, :test_render_renderer},
+          bus: :test_render_bus,
+          name: :test_render_coordinator
+        )
 
       Process.sleep(100)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(pid, "test_component", TestComponent, bus: :test_render_bus)
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(pid, "test_component", TestComponent,
+          bus: :test_render_bus
+        )
+
       Process.sleep(50)
 
       # Clear previous renders
       MockRenderer.clear(:test_render_renderer)
 
       # Create and publish a StateChanged signal
-      {:ok, signal} = Signals.StateChanged.new(%{
-        component_id: "test_component",
-        old_state: %{count: 0},
-        new_state: %{count: 1}
-      })
+      {:ok, signal} =
+        Signals.StateChanged.new(%{
+          component_id: "test_component",
+          old_state: %{count: 0},
+          new_state: %{count: 1}
+        })
 
       Jido.Signal.Bus.publish(:test_render_bus, [signal])
 
@@ -440,26 +481,32 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_render_metric_bus)
       {:ok, _renderer} = MockRenderer.start_link(name: :test_render_metric_renderer)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        renderer: {MockRenderer, :test_render_metric_renderer},
-        bus: :test_render_metric_bus,
-        name: :test_render_metric_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: {MockRenderer, :test_render_metric_renderer},
+          bus: :test_render_metric_bus,
+          name: :test_render_metric_coordinator
+        )
 
       Process.sleep(100)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(pid, "test_component", TestComponent, bus: :test_render_metric_bus)
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(pid, "test_component", TestComponent,
+          bus: :test_render_metric_bus
+        )
+
       Process.sleep(50)
 
       initial_metrics = RenderingCoordinator.get_metrics(pid)
       assert initial_metrics.renders_completed == 0
 
       # Publish StateChanged signal
-      {:ok, signal} = Signals.StateChanged.new(%{
-        component_id: "test_component",
-        old_state: %{count: 0},
-        new_state: %{count: 1}
-      })
+      {:ok, signal} =
+        Signals.StateChanged.new(%{
+          component_id: "test_component",
+          old_state: %{count: 0},
+          new_state: %{count: 1}
+        })
 
       Jido.Signal.Bus.publish(:test_render_metric_bus, [signal])
 
@@ -479,22 +526,24 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_render_unreg_bus)
       {:ok, _renderer} = MockRenderer.start_link(name: :test_render_unreg_renderer)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        renderer: {MockRenderer, :test_render_unreg_renderer},
-        bus: :test_render_unreg_bus,
-        name: :test_render_unreg_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: {MockRenderer, :test_render_unreg_renderer},
+          bus: :test_render_unreg_bus,
+          name: :test_render_unreg_coordinator
+        )
 
       Process.sleep(100)
 
       # Don't register any component
 
       # Publish StateChanged signal for unregistered component
-      {:ok, signal} = Signals.StateChanged.new(%{
-        component_id: "nonexistent",
-        old_state: %{count: 0},
-        new_state: %{count: 1}
-      })
+      {:ok, signal} =
+        Signals.StateChanged.new(%{
+          component_id: "nonexistent",
+          old_state: %{count: 0},
+          new_state: %{count: 1}
+        })
 
       Jido.Signal.Bus.publish(:test_render_unreg_bus, [signal])
 
@@ -517,28 +566,32 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_container_bus)
       {:ok, _renderer} = MockRenderer.start_link(name: :test_container_renderer)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        renderer: {MockRenderer, :test_container_renderer},
-        bus: :test_container_bus,
-        name: :test_container_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: {MockRenderer, :test_container_renderer},
+          bus: :test_container_bus,
+          name: :test_container_coordinator
+        )
 
       Process.sleep(100)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(
-        pid,
-        "container_component",
-        TestComponentWithContainer,
-        bus: :test_container_bus
-      )
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(
+          pid,
+          "container_component",
+          TestComponentWithContainer,
+          bus: :test_container_bus
+        )
+
       Process.sleep(50)
 
       # Publish StateChanged signal
-      {:ok, signal} = Signals.StateChanged.new(%{
-        component_id: "container_component",
-        old_state: %{count: 0},
-        new_state: %{count: 5}
-      })
+      {:ok, signal} =
+        Signals.StateChanged.new(%{
+          component_id: "container_component",
+          old_state: %{count: 0},
+          new_state: %{count: 5}
+        })
 
       Jido.Signal.Bus.publish(:test_container_bus, [signal])
 
@@ -585,23 +638,29 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_error_bus)
       {:ok, _renderer} = MockRenderer.start_link(name: :test_error_renderer)
 
-      {:ok, pid} = RenderingCoordinator.start_link(
-        renderer: {MockRenderer, :test_error_renderer},
-        bus: :test_error_bus,
-        name: :test_error_coordinator
-      )
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: {MockRenderer, :test_error_renderer},
+          bus: :test_error_bus,
+          name: :test_error_coordinator
+        )
 
       Process.sleep(100)
 
-      {:ok, _signal} = RenderingCoordinator.register_component(pid, "invalid_component", InvalidComponent, bus: :test_error_bus)
+      {:ok, _signal} =
+        RenderingCoordinator.register_component(pid, "invalid_component", InvalidComponent,
+          bus: :test_error_bus
+        )
+
       Process.sleep(50)
 
       # Publish StateChanged signal
-      {:ok, signal} = Signals.StateChanged.new(%{
-        component_id: "invalid_component",
-        old_state: %{value: 1},
-        new_state: %{value: 2}
-      })
+      {:ok, signal} =
+        Signals.StateChanged.new(%{
+          component_id: "invalid_component",
+          old_state: %{value: 1},
+          new_state: %{value: 2}
+        })
 
       Jido.Signal.Bus.publish(:test_error_bus, [signal])
 

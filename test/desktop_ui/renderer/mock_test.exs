@@ -65,7 +65,7 @@ defmodule DesktopUI.Renderer.MockTest do
       invalid_widget = %Widget{type: :label, id: nil, props: [], children: []}
 
       assert Mock.render("component_invalid", invalid_widget, name) ==
-        {:error, "label must have a :text property (string)"}
+               {:error, "label must have a :text property (string)"}
     end
 
     test "records render with timestamp", %{renderer_name: name} do
@@ -108,7 +108,8 @@ defmodule DesktopUI.Renderer.MockTest do
       widget = Widget.label("Test")
 
       Mock.render("component_1", widget, name)
-      Process.sleep(10)  # Ensure different timestamps
+      # Ensure different timestamps
+      Process.sleep(10)
       Mock.render("component_2", widget, name)
       Process.sleep(10)
       Mock.render("component_3", widget, name)
@@ -160,10 +161,15 @@ defmodule DesktopUI.Renderer.MockTest do
     end
 
     test "returns render with full widget tree", %{renderer_name: name} do
-      widget = Widget.container(:vbox, [
-        Widget.label("Title"),
-        Widget.button("Click", :clicked)
-      ], spacing: 8)
+      widget =
+        Widget.container(
+          :vbox,
+          [
+            Widget.label("Title"),
+            Widget.button("Click", :clicked)
+          ],
+          spacing: 8
+        )
 
       Mock.render("container_component", widget, name)
 
@@ -185,7 +191,8 @@ defmodule DesktopUI.Renderer.MockTest do
 
       Mock.render("comp_a", widget, name)
       Mock.render("comp_b", widget, name)
-      Mock.render("comp_a", widget, name)  # Second render of comp_a
+      # Second render of comp_a
+      Mock.render("comp_a", widget, name)
 
       render = Mock.get_render_by_component_id("comp_a", name)
       assert render.component_id == "comp_a"
@@ -302,10 +309,15 @@ defmodule DesktopUI.Renderer.MockTest do
     end
 
     test "generates text representation of nested widgets" do
-      widget = Widget.container(:vbox, [
-        Widget.label("Title"),
-        Widget.button("Click", :clicked)
-      ], spacing: 4)
+      widget =
+        Widget.container(
+          :vbox,
+          [
+            Widget.label("Title"),
+            Widget.button("Click", :clicked)
+          ],
+          spacing: 4
+        )
 
       result = Mock.screenshot(widget)
 
@@ -319,11 +331,12 @@ defmodule DesktopUI.Renderer.MockTest do
     end
 
     test "handles deeply nested widgets" do
-      widget = Widget.container(:vbox, [
-        Widget.container(:hbox, [
-          Widget.label("Nested")
+      widget =
+        Widget.container(:vbox, [
+          Widget.container(:hbox, [
+            Widget.label("Nested")
+          ])
         ])
-      ])
 
       result = Mock.screenshot(widget)
       lines = result |> String.trim() |> String.split("\n")
@@ -343,11 +356,12 @@ defmodule DesktopUI.Renderer.MockTest do
     end
 
     test "respects max_depth option" do
-      widget = Widget.container(:vbox, [
-        Widget.container(:hbox, [
-          Widget.label("Deep")
+      widget =
+        Widget.container(:vbox, [
+          Widget.container(:hbox, [
+            Widget.label("Deep")
+          ])
         ])
-      ])
 
       result = Mock.screenshot(widget, max_depth: 1)
       lines = result |> String.trim() |> String.split("\n")
@@ -359,9 +373,10 @@ defmodule DesktopUI.Renderer.MockTest do
     end
 
     test "respects custom indent_size" do
-      widget = Widget.container(:vbox, [
-        Widget.label("Indented")
-      ])
+      widget =
+        Widget.container(:vbox, [
+          Widget.label("Indented")
+        ])
 
       result = Mock.screenshot(widget, indent_size: 4)
       lines = result |> String.trim() |> String.split("\n")
@@ -391,14 +406,24 @@ defmodule DesktopUI.Renderer.MockTest do
     end
 
     test "generates readable screenshot for complex UI" do
-      widget = Widget.container(:vbox, [
-        Widget.label("Counter Demo", id: :title),
-        Widget.container(:hbox, [
-          Widget.button("+", :increment),
-          Widget.button("-", :decrement)
-        ], spacing: 8),
-        Widget.label("Current: 0", id: :count_label)
-      ], spacing: 16, padding: 8)
+      widget =
+        Widget.container(
+          :vbox,
+          [
+            Widget.label("Counter Demo", id: :title),
+            Widget.container(
+              :hbox,
+              [
+                Widget.button("+", :increment),
+                Widget.button("-", :decrement)
+              ],
+              spacing: 8
+            ),
+            Widget.label("Current: 0", id: :count_label)
+          ],
+          spacing: 16,
+          padding: 8
+        )
 
       result = Mock.screenshot(widget)
 
@@ -416,11 +441,13 @@ defmodule DesktopUI.Renderer.MockTest do
     test "supports {module, name} renderer pattern" do
       {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_mock_bus)
       {:ok, renderer_pid} = Mock.start_link(name: :coordinator_test_renderer)
-      {:ok, coord_pid} = DesktopUI.RenderingCoordinator.start_link(
-        renderer: {Mock, :coordinator_test_renderer},
-        bus: :test_mock_bus,
-        name: :test_mock_coordinator
-      )
+
+      {:ok, coord_pid} =
+        DesktopUI.RenderingCoordinator.start_link(
+          renderer: {Mock, :coordinator_test_renderer},
+          bus: :test_mock_bus,
+          name: :test_mock_coordinator
+        )
 
       Process.sleep(100)
 
@@ -442,29 +469,32 @@ defmodule DesktopUI.Renderer.MockTest do
         end
       end
 
-      {:ok, component_pid} = Jido.Agent.Server.start_link(
-        agent: TestComponentForMock,
-        name: :test_component_for_mock_agent
-      )
+      {:ok, component_pid} =
+        Jido.Agent.Server.start_link(
+          agent: TestComponentForMock,
+          name: :test_component_for_mock_agent
+        )
 
       Process.sleep(50)
 
-      {:ok, _signal} = DesktopUI.RenderingCoordinator.register_component(
-        coord_pid,
-        "test_component",
-        TestComponentForMock,
-        pid: component_pid,
-        bus: :test_mock_bus
-      )
+      {:ok, _signal} =
+        DesktopUI.RenderingCoordinator.register_component(
+          coord_pid,
+          "test_component",
+          TestComponentForMock,
+          pid: component_pid,
+          bus: :test_mock_bus
+        )
 
       Process.sleep(100)
 
       # Publish a state change signal
-      {:ok, signal} = DesktopUI.Signals.StateChanged.new(%{
-        component_id: "test_component",
-        old_state: %{count: 0},
-        new_state: %{count: 5}
-      })
+      {:ok, signal} =
+        DesktopUI.Signals.StateChanged.new(%{
+          component_id: "test_component",
+          old_state: %{count: 0},
+          new_state: %{count: 5}
+        })
 
       Jido.Signal.Bus.publish(:test_mock_bus, [signal])
 
