@@ -264,16 +264,16 @@ Implement the runtime as a bootstrap and event bridge:
 
 Build a complete working example component demonstrating the agent-based architecture.
 
-- [ ] **Task 1.8** Create `DesktopUI.Examples.Counter` component
+- [x] **Task 1.8** Create `DesktopUI.Examples.Counter` component
 
 Implement a classic counter as a Jido agent:
 
-- [ ] 1.8.1 Define component with `use DesktopUI.Elm`
-- [ ] 1.8.2 Implement `init/1` returning initial count of 0
-- [ ] 1.8.3 Implement `update/2` handling `:increment`, `:decrement`, `:reset` messages
-- [ ] 1.8.4 Implement `view/1` returning label and button widgets
-- [ ] 1.8.5 Implement `on_signal/2` for Clicked signal handling
-- [ ] 1.8.6 Demonstrate nested container (vbox with hbox for buttons)
+- [x] 1.8.1 Define component with `use DesktopUI.Elm`
+- [x] 1.8.2 Implement `init/1` returning initial count of 0
+- [x] 1.8.3 Implement `update/2` handling `:increment`, `:decrement`, `:reset` messages
+- [x] 1.8.4 Implement `view/1` returning label and button widgets
+- [x] 1.8.5 Implement `on_signal/2` for Clicked signal handling
+- [x] 1.8.6 Demonstrate nested container (vbox with hbox for buttons)
 
 **Implementation Notes:**
 - Component is a full Jido agent with all capabilities
@@ -284,12 +284,14 @@ Implement a classic counter as a Jido agent:
 - Show spacing and padding props in action
 
 **Unit Tests for Section 1.8:**
-- [ ] 1.8.1 Verify counter initializes with count of 0
-- [ ] 1.8.2 Verify `:increment` message increases count by 1
-- [ ] 1.8.3 Verify `:decrement` message decreases count by 1
-- [ ] 1.8.4 Verify state changes publish StateChanged signals
-- [ ] 1.8.5 Verify Clicked signals trigger state updates
-- [ ] 1.8.6 Verify `view/1` returns valid UI tree
+- [x] 1.8.1 Verify counter initializes with count of 0
+- [x] 1.8.2 Verify `:increment` message increases count by 1
+- [x] 1.8.3 Verify `:decrement` message decreases count by 1
+- [x] 1.8.4 Verify state changes publish StateChanged signals
+- [x] 1.8.5 Verify Clicked signals trigger state updates
+- [x] 1.8.6 Verify `view/1` returns valid UI tree
+
+**Status:** Completed 2025-01-24 - See `notes/summaries/section-1.8-counter-component.md` for details.
 
 ---
 
