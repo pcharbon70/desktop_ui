@@ -33,12 +33,16 @@ defmodule DesktopUI.RuntimeTest do
 
     @impl true
     def view(%{count: count}) do
-      Widget.container(:vbox, [
-        Widget.label("Count: #{count}"),
-        Widget.button("+", :increment),
-        Widget.button("-", :decrement),
-        Widget.button("Reset", :reset)
-      ], spacing: 8)
+      Widget.container(
+        :vbox,
+        [
+          Widget.label("Count: #{count}"),
+          Widget.button("+", :increment),
+          Widget.button("-", :decrement),
+          Widget.button("Reset", :reset)
+        ],
+        spacing: 8
+      )
     end
   end
 
@@ -50,12 +54,13 @@ defmodule DesktopUI.RuntimeTest do
 
     {:ok, renderer_pid} = DesktopUI.Renderer.Mock.start_link(name: renderer_name)
 
-    {:ok, runtime_pid} = Runtime.start_link(
-      name: name,
-      root_component: TestRootComponent,
-      renderer: {DesktopUI.Renderer.Mock, renderer_name},
-      bus: bus_name
-    )
+    {:ok, runtime_pid} =
+      Runtime.start_link(
+        name: name,
+        root_component: TestRootComponent,
+        renderer: {DesktopUI.Renderer.Mock, renderer_name},
+        bus: bus_name
+      )
 
     # Wait for children to start
     Process.sleep(200)
@@ -72,6 +77,7 @@ defmodule DesktopUI.RuntimeTest do
           :throw, _ -> :already_stopping
         end
       end
+
       if Process.whereis(renderer_name) do
         try do
           GenServer.stop(renderer_name)
@@ -99,12 +105,13 @@ defmodule DesktopUI.RuntimeTest do
 
       {:ok, renderer_pid} = DesktopUI.Renderer.Mock.start_link(name: renderer_name)
 
-      {:ok, runtime_pid} = Runtime.start_link(
-        name: name,
-        root_component: TestRootComponent,
-        renderer: {DesktopUI.Renderer.Mock, renderer_name},
-        bus: bus_name
-      )
+      {:ok, runtime_pid} =
+        Runtime.start_link(
+          name: name,
+          root_component: TestRootComponent,
+          renderer: {DesktopUI.Renderer.Mock, renderer_name},
+          bus: bus_name
+        )
 
       assert is_pid(runtime_pid)
       assert Process.alive?(runtime_pid)
@@ -145,11 +152,12 @@ defmodule DesktopUI.RuntimeTest do
       name = :"runtime_default_renderer_#{System.unique_integer([:positive, :monotonic])}"
       bus_name = :"bus_default_renderer_#{System.unique_integer([:positive, :monotonic])}"
 
-      {:ok, runtime_pid} = Runtime.start_link(
-        name: name,
-        root_component: TestRootComponent,
-        bus: bus_name
-      )
+      {:ok, runtime_pid} =
+        Runtime.start_link(
+          name: name,
+          root_component: TestRootComponent,
+          bus: bus_name
+        )
 
       Process.sleep(200)
 
@@ -166,11 +174,12 @@ defmodule DesktopUI.RuntimeTest do
 
       {:ok, _renderer_pid} = DesktopUI.Renderer.Mock.start_link(name: renderer_name)
 
-      {:ok, runtime_pid} = Runtime.start_link(
-        name: name,
-        root_component: TestRootComponent,
-        renderer: {DesktopUI.Renderer.Mock, renderer_name}
-      )
+      {:ok, runtime_pid} =
+        Runtime.start_link(
+          name: name,
+          root_component: TestRootComponent,
+          renderer: {DesktopUI.Renderer.Mock, renderer_name}
+        )
 
       Process.sleep(200)
 
@@ -234,11 +243,12 @@ defmodule DesktopUI.RuntimeTest do
       # Subscribe to capture the signal
       test_pid = self()
 
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        bus_name,
-        "desktop_ui.ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          bus_name,
+          "desktop_ui.ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       :ok = Runtime.bridge_event({:sdl_keydown, key: :up, mod: []}, bus: bus_name)
 
@@ -249,11 +259,12 @@ defmodule DesktopUI.RuntimeTest do
     test "bridges keyup events to KeyReleased signal", %{bus_name: bus_name} do
       test_pid = self()
 
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        bus_name,
-        "desktop_ui.ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          bus_name,
+          "desktop_ui.ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       :ok = Runtime.bridge_event({:sdl_keyup, key: "escape", mod: [:ctrl, :shift]}, bus: bus_name)
 
@@ -263,16 +274,18 @@ defmodule DesktopUI.RuntimeTest do
     test "bridges mouseup events to Clicked signal when target_id provided", %{bus_name: bus_name} do
       test_pid = self()
 
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        bus_name,
-        "desktop_ui.ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          bus_name,
+          "desktop_ui.ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
-      :ok = Runtime.bridge_event(
-        {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_click},
-        bus: bus_name
-      )
+      :ok =
+        Runtime.bridge_event(
+          {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_click},
+          bus: bus_name
+        )
 
       assert_receive {:signal, %Jido.Signal{type: "desktop_ui.ui.clicked"}}, 500
     end
@@ -282,19 +295,23 @@ defmodule DesktopUI.RuntimeTest do
       assert result == {:error, :no_target_id}
     end
 
-    test "bridges mousedown events to MousePressed signal when target_id provided", %{bus_name: bus_name} do
+    test "bridges mousedown events to MousePressed signal when target_id provided", %{
+      bus_name: bus_name
+    } do
       test_pid = self()
 
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        bus_name,
-        "desktop_ui.ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          bus_name,
+          "desktop_ui.ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
-      :ok = Runtime.bridge_event(
-        {:sdl_mousedown, x: 50, y: 25, button: :right, target_id: :btn_menu},
-        bus: bus_name
-      )
+      :ok =
+        Runtime.bridge_event(
+          {:sdl_mousedown, x: 50, y: 25, button: :right, target_id: :btn_menu},
+          bus: bus_name
+        )
 
       assert_receive {:signal, %Jido.Signal{type: "desktop_ui.ui.mouse_pressed"}}, 500
     end
@@ -302,11 +319,12 @@ defmodule DesktopUI.RuntimeTest do
     test "bridges quit events to Quit signal", %{bus_name: bus_name} do
       test_pid = self()
 
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        bus_name,
-        "desktop_ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          bus_name,
+          "desktop_ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       :ok = Runtime.bridge_event({:sdl_quit}, bus: bus_name)
 
@@ -332,12 +350,13 @@ defmodule DesktopUI.RuntimeTest do
 
       {:ok, _renderer_pid} = DesktopUI.Renderer.Mock.start_link(name: renderer_name)
 
-      {:ok, runtime_pid} = Runtime.start_link(
-        name: name,
-        root_component: TestRootComponent,
-        renderer: {DesktopUI.Renderer.Mock, renderer_name},
-        bus: bus_name
-      )
+      {:ok, runtime_pid} =
+        Runtime.start_link(
+          name: name,
+          root_component: TestRootComponent,
+          renderer: {DesktopUI.Renderer.Mock, renderer_name},
+          bus: bus_name
+        )
 
       Process.sleep(200)
 
@@ -367,12 +386,13 @@ defmodule DesktopUI.RuntimeTest do
 
       {:ok, _renderer_pid} = DesktopUI.Renderer.Mock.start_link(name: renderer_name)
 
-      {:ok, runtime_pid} = Runtime.start_link(
-        name: name,
-        root_component: TestRootComponent,
-        renderer: {DesktopUI.Renderer.Mock, renderer_name},
-        bus: bus_name
-      )
+      {:ok, runtime_pid} =
+        Runtime.start_link(
+          name: name,
+          root_component: TestRootComponent,
+          renderer: {DesktopUI.Renderer.Mock, renderer_name},
+          bus: bus_name
+        )
 
       Process.sleep(200)
 
@@ -403,6 +423,7 @@ defmodule DesktopUI.RuntimeTest do
           _ -> :already_stopped
         end
       end
+
       try do
         GenServer.stop(renderer_name)
       rescue
@@ -410,5 +431,4 @@ defmodule DesktopUI.RuntimeTest do
       end
     end
   end
-
 end

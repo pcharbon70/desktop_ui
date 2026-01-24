@@ -18,12 +18,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
     {:ok, renderer_pid} = Mock.start_link(name: renderer_name)
 
-    {:ok, runtime_pid} = Runtime.start_link(
-      name: runtime_name,
-      root_component: Counter,
-      renderer: {Mock, renderer_name},
-      bus: :desktop_ui
-    )
+    {:ok, runtime_pid} =
+      Runtime.start_link(
+        name: runtime_name,
+        root_component: Counter,
+        renderer: {Mock, renderer_name},
+        bus: :desktop_ui
+      )
 
     # Wait for children to start
     Process.sleep(200)
@@ -39,6 +40,7 @@ defmodule DesktopUI.Phase1IntegrationTest do
           :throw, _ -> :already_stopping
         end
       end
+
       if Process.whereis(renderer_name) do
         try do
           GenServer.stop(renderer_name)
@@ -77,13 +79,15 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
   defp register_component(component_pid, component_id \\ "test_component") do
     # Register the component with the RenderingCoordinator
-    {:ok, _signal} = DesktopUI.RenderingCoordinator.register_component(
-      self(),
-      component_id,
-      Counter,
-      pid: component_pid,
-      bus: :desktop_ui
-    )
+    {:ok, _signal} =
+      DesktopUI.RenderingCoordinator.register_component(
+        self(),
+        component_id,
+        Counter,
+        pid: component_pid,
+        bus: :desktop_ui
+      )
+
     Process.sleep(50)
   end
 
@@ -127,11 +131,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
     test "state change publishes StateChanged signal", %{runtime_name: runtime_name} do
       # Subscribe to state changes
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       root_pid = Runtime.get_root_component(runtime_name)
       {:ok, server_state} = Jido.Agent.Server.state(root_pid)
@@ -199,44 +205,62 @@ defmodule DesktopUI.Phase1IntegrationTest do
     test "increment via event bridge publishes Clicked signal", %{runtime_name: runtime_name} do
       # Subscribe to UI events to verify the bridge works
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # Use event bridge to send click
-      :ok = Runtime.bridge_event(
-        {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_increment},
-        bus: :desktop_ui
-      )
+      :ok =
+        Runtime.bridge_event(
+          {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_increment},
+          bus: :desktop_ui
+        )
 
       # Should receive Clicked signal (component would need to be subscribed to handle it)
-      assert_receive {:signal, %Jido.Signal{type: "desktop_ui.ui.clicked", data: %{target_id: :btn_increment}}}, 500
+      assert_receive {:signal,
+                      %Jido.Signal{
+                        type: "desktop_ui.ui.clicked",
+                        data: %{target_id: :btn_increment}
+                      }},
+                     500
     end
 
     test "decrement via event bridge updates state", %{runtime_name: runtime_name} do
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
 
-      :ok = Runtime.bridge_event(
-        {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_decrement},
-        bus: :desktop_ui
-      )
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
+
+      :ok =
+        Runtime.bridge_event(
+          {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_decrement},
+          bus: :desktop_ui
+        )
 
       # Should receive Clicked signal
-      assert_receive {:signal, %Jido.Signal{type: "desktop_ui.ui.clicked", data: %{target_id: :btn_decrement}}}, 500
+      assert_receive {:signal,
+                      %Jido.Signal{
+                        type: "desktop_ui.ui.clicked",
+                        data: %{target_id: :btn_decrement}
+                      }},
+                     500
     end
   end
 
   describe "1.9.3 signal flow from component to RenderingCoordinator" do
     setup [:setup_runtime]
 
-    test "RenderingCoordinator receives StateChanged signals when component is registered", %{runtime_name: runtime_name} do
+    test "RenderingCoordinator receives StateChanged signals when component is registered", %{
+      runtime_name: runtime_name
+    } do
       # Get root component and register it
       root_pid = Runtime.get_root_component(runtime_name)
 
@@ -251,11 +275,12 @@ defmodule DesktopUI.Phase1IntegrationTest do
       test_pid = self()
 
       # The coordinator subscribes to all signals, so we can observe them
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(root_pid)
       agent = server_state.agent
@@ -268,7 +293,10 @@ defmodule DesktopUI.Phase1IntegrationTest do
       assert_receive {:signal, %Jido.Signal{type: "desktop_ui.state.changed"}}, 500
     end
 
-    test "registered component triggers render on state change", %{runtime_name: runtime_name, renderer_name: renderer_name} do
+    test "registered component triggers render on state change", %{
+      runtime_name: runtime_name,
+      renderer_name: renderer_name
+    } do
       root_pid = Runtime.get_root_component(runtime_name)
 
       # Get the agent ID to use as component_id
@@ -396,11 +424,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
       # Subscribe to state changes
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # Send increment - state changes
       {:ok, _agent} = Elm.handle_ui_signal(agent, :increment)
@@ -418,11 +448,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
       {:ok, agent} = Elm.handle_ui_signal(agent, :noop)
 
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # If we had a message that results in same state, no signal should be published
       # For Counter, all messages change state, so we just verify the mechanism exists
@@ -479,11 +511,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
       # Subscribe to state changes
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # Trigger multiple state changes rapidly
       # NOTE: Each call to handle_ui_signal returns an updated agent
@@ -531,12 +565,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
       {:ok, renderer_pid} = Mock.start_link(name: renderer_name)
 
-      {:ok, runtime_pid} = Runtime.start_link(
-        name: runtime_name,
-        root_component: Counter,
-        renderer: {Mock, renderer_name},
-        bus: :desktop_ui
-      )
+      {:ok, runtime_pid} =
+        Runtime.start_link(
+          name: runtime_name,
+          root_component: Counter,
+          renderer: {Mock, renderer_name},
+          bus: :desktop_ui
+        )
 
       Process.sleep(200)
 
@@ -564,12 +599,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
       {:ok, _renderer_pid} = Mock.start_link(name: renderer_name)
 
-      {:ok, runtime_pid} = Runtime.start_link(
-        name: runtime_name,
-        root_component: Counter,
-        renderer: {Mock, renderer_name},
-        bus: :desktop_ui
-      )
+      {:ok, runtime_pid} =
+        Runtime.start_link(
+          name: runtime_name,
+          root_component: Counter,
+          renderer: {Mock, renderer_name},
+          bus: :desktop_ui
+        )
 
       Process.sleep(200)
 
@@ -596,11 +632,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
     test "signals have source tracking", %{runtime_name: runtime_name} do
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       root_pid = Runtime.get_root_component(runtime_name)
       {:ok, server_state} = Jido.Agent.Server.state(root_pid)
@@ -619,11 +657,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
     test "signals have unique IDs", %{runtime_name: runtime_name} do
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       root_pid = Runtime.get_root_component(runtime_name)
       {:ok, server_state} = Jido.Agent.Server.state(root_pid)
@@ -643,11 +683,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
     test "signals can be traced via causality", %{runtime_name: runtime_name} do
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       root_pid = Runtime.get_root_component(runtime_name)
       {:ok, server_state} = Jido.Agent.Server.state(root_pid)
@@ -722,11 +764,13 @@ defmodule DesktopUI.Phase1IntegrationTest do
     test "complete counter workflow", %{runtime_name: runtime_name} do
       # Subscribe to signals
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       root_pid = Runtime.get_root_component(runtime_name)
       {:ok, server_state} = Jido.Agent.Server.state(root_pid)
@@ -760,26 +804,35 @@ defmodule DesktopUI.Phase1IntegrationTest do
 
     test "button clicks via event bridge", %{runtime_name: runtime_name} do
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.ui.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # Simulate button clicks via event bridge
-      :ok = Runtime.bridge_event(
-        {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_increment},
-        bus: :desktop_ui
-      )
+      :ok =
+        Runtime.bridge_event(
+          {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_increment},
+          bus: :desktop_ui
+        )
 
       # Should receive Clicked signal
-      assert_receive {:signal, %Jido.Signal{type: "desktop_ui.ui.clicked", data: %{target_id: :btn_increment}}}, 500
+      assert_receive {:signal,
+                      %Jido.Signal{
+                        type: "desktop_ui.ui.clicked",
+                        data: %{target_id: :btn_increment}
+                      }},
+                     500
     end
   end
 
   # Helper to flush mailbox
   defp flush_mailbox do
     Process.sleep(50)
+
     receive do
       _ -> flush_mailbox()
     after

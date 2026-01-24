@@ -261,12 +261,14 @@ defmodule DesktopUI.Renderer.Mock do
   @impl true
   def init(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
-    {:ok, %{
-      renders: [],
-      render_count: 0,
-      validation_failure_count: 0,
-      name: name
-    }}
+
+    {:ok,
+     %{
+       renders: [],
+       render_count: 0,
+       validation_failure_count: 0,
+       name: name
+     }}
   end
 
   @impl true
@@ -282,14 +284,15 @@ defmodule DesktopUI.Renderer.Mock do
     }
 
     new_state = %{
-      state |
-      renders: state.renders ++ [render],
-      render_count: state.render_count + 1,
-      validation_failure_count: if validation_result == :ok do
-        state.validation_failure_count
-      else
-        state.validation_failure_count + 1
-      end
+      state
+      | renders: state.renders ++ [render],
+        render_count: state.render_count + 1,
+        validation_failure_count:
+          if validation_result == :ok do
+            state.validation_failure_count
+          else
+            state.validation_failure_count + 1
+          end
     }
 
     {:reply, validation_result, new_state}
@@ -308,9 +311,10 @@ defmodule DesktopUI.Renderer.Mock do
   end
 
   def handle_call({:get_render_by_component_id, component_id}, _from, state) do
-    render = state.renders
-    |> Enum.filter(fn r -> r.component_id == component_id end)
-    |> List.last()
+    render =
+      state.renders
+      |> Enum.filter(fn r -> r.component_id == component_id end)
+      |> List.last()
 
     {:reply, render, state}
   end
@@ -320,18 +324,26 @@ defmodule DesktopUI.Renderer.Mock do
   end
 
   def handle_call(:clear, _from, state) do
-    {:reply, :ok, %{
-      state |
-      renders: [],
-      render_count: 0,
-      validation_failure_count: 0
-    }}
+    {:reply, :ok,
+     %{
+       state
+       | renders: [],
+         render_count: 0,
+         validation_failure_count: 0
+     }}
   end
 
   # Private Functions
 
   # Screenshot generation - recursive traversal
-  defp screenshot_to_io(io_device, %Widget{type: type, props: props, children: children}, depth, prefix, indent_size, max_depth) do
+  defp screenshot_to_io(
+         io_device,
+         %Widget{type: type, props: props, children: children},
+         depth,
+         prefix,
+         indent_size,
+         max_depth
+       ) do
     if max_depth != :unlimited and depth > max_depth do
       :ok
     else

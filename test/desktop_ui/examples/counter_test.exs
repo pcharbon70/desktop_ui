@@ -77,9 +77,10 @@ defmodule DesktopUI.Examples.CounterTest do
       ui_tree = Counter.view(state)
 
       # Find the count label
-      count_label = Enum.find(ui_tree.children, fn child ->
-        child.id == :count_label
-      end)
+      count_label =
+        Enum.find(ui_tree.children, fn child ->
+          child.id == :count_label
+        end)
 
       assert count_label != nil
       assert count_label.type == :label
@@ -90,9 +91,10 @@ defmodule DesktopUI.Examples.CounterTest do
       state = %{count: 0}
       ui_tree = Counter.view(state)
 
-      title_label = Enum.find(ui_tree.children, fn child ->
-        child.id == :title
-      end)
+      title_label =
+        Enum.find(ui_tree.children, fn child ->
+          child.id == :title
+        end)
 
       assert title_label != nil
       assert title_label.type == :label
@@ -104,9 +106,10 @@ defmodule DesktopUI.Examples.CounterTest do
       ui_tree = Counter.view(state)
 
       # Find the hbox container
-      hbox = Enum.find(ui_tree.children, fn child ->
-        child.type == :container and child.props[:layout] == :hbox
-      end)
+      hbox =
+        Enum.find(ui_tree.children, fn child ->
+          child.type == :container and child.props[:layout] == :hbox
+        end)
 
       assert hbox != nil
       assert hbox.props[:spacing] == 4
@@ -117,9 +120,10 @@ defmodule DesktopUI.Examples.CounterTest do
       state = %{count: 0}
       ui_tree = Counter.view(state)
 
-      hbox = Enum.find(ui_tree.children, fn child ->
-        child.type == :container and child.props[:layout] == :hbox
-      end)
+      hbox =
+        Enum.find(ui_tree.children, fn child ->
+          child.type == :container and child.props[:layout] == :hbox
+        end)
 
       increment_btn = Enum.find(hbox.children, fn child -> child.id == :btn_increment end)
       decrement_btn = Enum.find(hbox.children, fn child -> child.id == :btn_decrement end)
@@ -154,10 +158,14 @@ defmodule DesktopUI.Examples.CounterTest do
     end
 
     test "clicked signal with btn_increment increments count", %{agent: agent} do
-      {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :btn_increment,
-        button: :left
-      }, source: "/test")
+      {:ok, signal} =
+        Signals.Clicked.new(
+          %{
+            target_id: :btn_increment,
+            button: :left
+          },
+          source: "/test"
+        )
 
       {:ok, updated_agent} = Counter.on_signal(agent, signal)
 
@@ -174,10 +182,14 @@ defmodule DesktopUI.Examples.CounterTest do
       {:ok, agent} = Elm.handle_ui_signal(agent, :increment)
       {:ok, agent} = Elm.handle_ui_signal(agent, :increment)
 
-      {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :btn_decrement,
-        button: :left
-      }, source: "/test")
+      {:ok, signal} =
+        Signals.Clicked.new(
+          %{
+            target_id: :btn_decrement,
+            button: :left
+          },
+          source: "/test"
+        )
 
       {:ok, updated_agent} = Counter.on_signal(agent, signal)
 
@@ -198,10 +210,14 @@ defmodule DesktopUI.Examples.CounterTest do
       {:ok, agent} = Elm.handle_ui_signal(agent, :increment)
       {:ok, agent} = Elm.handle_ui_signal(agent, :increment)
 
-      {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :btn_reset,
-        button: :left
-      }, source: "/test")
+      {:ok, signal} =
+        Signals.Clicked.new(
+          %{
+            target_id: :btn_reset,
+            button: :left
+          },
+          source: "/test"
+        )
 
       {:ok, updated_agent} = Counter.on_signal(agent, signal)
 
@@ -213,10 +229,14 @@ defmodule DesktopUI.Examples.CounterTest do
       # Initialize state first
       {:ok, agent} = Elm.handle_ui_signal(agent, :noop)
 
-      {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :unknown_button,
-        button: :left
-      }, source: "/test")
+      {:ok, signal} =
+        Signals.Clicked.new(
+          %{
+            target_id: :unknown_button,
+            button: :left
+          },
+          source: "/test"
+        )
 
       {:ok, updated_agent} = Counter.on_signal(agent, signal)
 
@@ -229,10 +249,14 @@ defmodule DesktopUI.Examples.CounterTest do
       # Initialize state first
       {:ok, agent} = Elm.handle_ui_signal(agent, :noop)
 
-      {:ok, signal} = Signals.KeyPressed.new(%{
-        key: "escape",
-        modifiers: []
-      }, source: "/test")
+      {:ok, signal} =
+        Signals.KeyPressed.new(
+          %{
+            key: "escape",
+            modifiers: []
+          },
+          source: "/test"
+        )
 
       {:ok, updated_agent} = Counter.on_signal(agent, signal)
 
@@ -248,10 +272,11 @@ defmodule DesktopUI.Examples.CounterTest do
 
       {:ok, _bus} = Jido.Signal.Bus.start_link(name: bus_name)
 
-      {:ok, agent_pid} = Jido.Agent.Server.start_link(
-        agent: Counter,
-        name: nil
-      )
+      {:ok, agent_pid} =
+        Jido.Agent.Server.start_link(
+          agent: Counter,
+          name: nil
+        )
 
       on_exit(fn ->
         if Process.whereis(bus_name), do: GenServer.stop(bus_name)
@@ -324,11 +349,13 @@ defmodule DesktopUI.Examples.CounterTest do
 
       # Subscribe to state change signals
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        :desktop_ui,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :desktop_ui,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       {:ok, server_state} = Jido.Agent.Server.state(agent_pid)
       agent = server_state.agent
@@ -343,17 +370,23 @@ defmodule DesktopUI.Examples.CounterTest do
     test "on_signal handles Clicked signals from bus", %{agent_pid: agent_pid, bus_name: bus_name} do
       # Subscribe to state changes to verify
       test_pid = self()
-      {:ok, _sub} = Jido.Signal.Bus.subscribe(
-        bus_name,
-        "desktop_ui.state.**",
-        dispatch: {:pid, target: test_pid}
-      )
+
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          bus_name,
+          "desktop_ui.state.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # Publish a Clicked signal to the bus
-      {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :btn_increment,
-        button: :left
-      }, source: "/test")
+      {:ok, signal} =
+        Signals.Clicked.new(
+          %{
+            target_id: :btn_increment,
+            button: :left
+          },
+          source: "/test"
+        )
 
       # The agent won't automatically receive this unless it's subscribed
       # So we need to also test the on_signal callback directly

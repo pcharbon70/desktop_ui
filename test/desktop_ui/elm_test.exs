@@ -24,15 +24,19 @@ defmodule DesktopUI.ElmTest do
 
     test "behaviour defines optional callbacks" do
       callbacks = Elm.behaviour_info(:callbacks)
-      # Verify all three required callbacks are present
-      assert length(callbacks) == 3
+      # Verify all callbacks are present (init/1, update/2, view/1, on_signal/2)
+      assert length(callbacks) == 4
+      assert {:init, 1} in callbacks
+      assert {:update, 2} in callbacks
+      assert {:view, 1} in callbacks
+      assert {:on_signal, 2} in callbacks
     end
   end
 
   describe "use DesktopUI.Elm macro" do
     test "generates required function stubs that raise helpful errors" do
       defmodule TestComponentNoImpls do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_component_no_impls"
       end
 
       # init/1 should raise with helpful message when called
@@ -53,7 +57,7 @@ defmodule DesktopUI.ElmTest do
 
     test "allows implementing callbacks to override default implementations" do
       defmodule TestComponentWithImpls do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_component_with_impls"
 
         @impl true
         def init(opts) do
@@ -95,7 +99,7 @@ defmodule DesktopUI.ElmTest do
 
     test "generates component with correct behaviour attribute" do
       defmodule TestComponentBehaviourCheck do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_component_behaviour_check"
 
         @impl true
         def init(_opts), do: {%{}, []}
@@ -108,9 +112,13 @@ defmodule DesktopUI.ElmTest do
       end
 
       # Verify the module has the correct behaviour
-      assert {:behaviour, [DesktopUI.Elm]} =
-               TestComponentBehaviourCheck.module_info(:attributes)
-               |> List.keyfind(:behaviour, 0)
+      # Note: Jido.Agent is also a behaviour, so we check that DesktopUI.Elm is included
+      behaviours =
+        TestComponentBehaviourCheck.module_info(:attributes)
+        |> Keyword.get_values(:behaviour)
+        |> List.flatten()
+
+      assert DesktopUI.Elm in behaviours
     end
   end
 
@@ -164,7 +172,7 @@ defmodule DesktopUI.ElmTest do
 
     test "view/1 can return complex ui_element trees" do
       defmodule TestComponentComplexView do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_component_complex_view"
 
         @impl true
         def init(_opts), do: {%{items: []}, []}
@@ -234,7 +242,7 @@ defmodule DesktopUI.ElmTest do
 
     test "update/2 can return commands" do
       defmodule TestComponentWithCommands do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_component_with_commands"
 
         @impl true
         def init(_opts), do: {%{}, []}
@@ -289,7 +297,7 @@ defmodule DesktopUI.ElmTest do
 
     test "init/1 can return commands" do
       defmodule TestComponentInitWithCommands do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_component_init_with_commands"
 
         @impl true
         def init(opts) do
@@ -315,7 +323,7 @@ defmodule DesktopUI.ElmTest do
   describe "state type flexibility" do
     test "state can be a map" do
       defmodule TestStateMap do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_state_map"
 
         @impl true
         def init(_opts), do: {%{key: "value"}, []}
@@ -329,27 +337,31 @@ defmodule DesktopUI.ElmTest do
     end
 
     test "state can be a struct" do
+      # Define struct module outside to avoid defstruct issues in nested modules
       defmodule TestStateStruct do
+        @moduledoc false
         defstruct [:count, :name]
+      end
 
-        use DesktopUI.Elm
+      defmodule TestStateStructComponent do
+        use DesktopUI.Elm, name: "test_state_struct"
 
         @impl true
-        def init(_opts), do: {struct(__MODULE__, count: 0), []}
+        def init(_opts), do: {struct(TestStateStruct, count: 0), []}
         @impl true
         def update(_msg, state), do: {state, []}
         @impl true
         def view(_state), do: %{type: :label, props: [], id: nil, children: []}
       end
 
-      assert {state, []} = TestStateStruct.init([])
+      assert {state, []} = TestStateStructComponent.init([])
       assert state.count == 0
       assert state.__struct__ == TestStateStruct
     end
 
     test "state can be a simple value (integer)" do
       defmodule TestStateInt do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_state_int"
 
         @impl true
         def init(_opts), do: {0, []}
@@ -368,7 +380,7 @@ defmodule DesktopUI.ElmTest do
 
     test "state can be a tuple" do
       defmodule TestStateTuple do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_state_tuple"
 
         @impl true
         def init(_opts), do: {{0, 0}, []}
@@ -388,7 +400,7 @@ defmodule DesktopUI.ElmTest do
   describe "message type flexibility" do
     test "messages can be atoms" do
       defmodule TestMessageAtom do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_message_atom"
 
         @impl true
         def init(_opts), do: {%{}, []}
@@ -406,7 +418,7 @@ defmodule DesktopUI.ElmTest do
 
     test "messages can be tuples" do
       defmodule TestMessageTuple do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_message_tuple"
 
         @impl true
         def init(_opts), do: {%{}, []}
@@ -421,7 +433,7 @@ defmodule DesktopUI.ElmTest do
 
     test "messages can be maps" do
       defmodule TestMessageMap do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_message_map"
 
         @impl true
         def init(_opts), do: {%{}, []}
@@ -439,7 +451,7 @@ defmodule DesktopUI.ElmTest do
   describe "component lifecycle example" do
     test "full component lifecycle works correctly" do
       defmodule TestLifecycleComponent do
-        use DesktopUI.Elm
+        use DesktopUI.Elm, name: "test_lifecycle_component"
 
         @impl true
         def init(opts) do

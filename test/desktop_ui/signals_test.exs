@@ -7,11 +7,12 @@ defmodule DesktopUI.SignalsTest do
 
   describe "StateChanged" do
     test "creates a valid signal with required fields" do
-      assert {:ok, signal} = Signals.StateChanged.new(%{
-        component_id: "counter_123",
-        old_state: %{count: 0},
-        new_state: %{count: 1}
-      })
+      assert {:ok, signal} =
+               Signals.StateChanged.new(%{
+                 component_id: "counter_123",
+                 old_state: %{count: 0},
+                 new_state: %{count: 1}
+               })
 
       assert signal.type == "desktop_ui.state.changed"
       assert signal.source == "/desktop_ui/components"
@@ -21,24 +22,27 @@ defmodule DesktopUI.SignalsTest do
     end
 
     test "validates component_id is required" do
-      assert {:error, _reason} = Signals.StateChanged.new(%{
-        old_state: %{count: 0},
-        new_state: %{count: 1}
-      })
+      assert {:error, _reason} =
+               Signals.StateChanged.new(%{
+                 old_state: %{count: 0},
+                 new_state: %{count: 1}
+               })
     end
 
     test "validates old_state is required" do
-      assert {:error, _reason} = Signals.StateChanged.new(%{
-        component_id: "counter_123",
-        new_state: %{count: 1}
-      })
+      assert {:error, _reason} =
+               Signals.StateChanged.new(%{
+                 component_id: "counter_123",
+                 new_state: %{count: 1}
+               })
     end
 
     test "validates new_state is required" do
-      assert {:error, _reason} = Signals.StateChanged.new(%{
-        component_id: "counter_123",
-        old_state: %{count: 0}
-      })
+      assert {:error, _reason} =
+               Signals.StateChanged.new(%{
+                 component_id: "counter_123",
+                 old_state: %{count: 0}
+               })
     end
 
     test "allows complex state maps" do
@@ -48,11 +52,12 @@ defmodule DesktopUI.SignalsTest do
         nested: %{value: 10}
       }
 
-      assert {:ok, signal} = Signals.StateChanged.new(%{
-        component_id: "complex_component",
-        old_state: complex_state,
-        new_state: %{complex_state | count: 6}
-      })
+      assert {:ok, signal} =
+               Signals.StateChanged.new(%{
+                 component_id: "complex_component",
+                 old_state: complex_state,
+                 new_state: %{complex_state | count: 6}
+               })
 
       assert signal.data.new_state.count == 6
       assert signal.data.new_state.items == ["a", "b", "c"]
@@ -61,12 +66,13 @@ defmodule DesktopUI.SignalsTest do
 
   describe "Clicked" do
     test "creates a valid signal with target_id" do
-      assert {:ok, signal} = Signals.Clicked.new(%{
-        target_id: :btn_increment,
-        button: :left,
-        x: 100,
-        y: 50
-      })
+      assert {:ok, signal} =
+               Signals.Clicked.new(%{
+                 target_id: :btn_increment,
+                 button: :left,
+                 x: 100,
+                 y: 50
+               })
 
       assert signal.type == "desktop_ui.ui.clicked"
       assert signal.source == "/desktop_ui/input"
@@ -77,9 +83,10 @@ defmodule DesktopUI.SignalsTest do
     end
 
     test "creates a valid signal without target_id" do
-      assert {:ok, signal} = Signals.Clicked.new(%{
-        button: :left
-      })
+      assert {:ok, signal} =
+               Signals.Clicked.new(%{
+                 button: :left
+               })
 
       assert signal.type == "desktop_ui.ui.clicked"
       assert signal.data.button == :left
@@ -113,10 +120,11 @@ defmodule DesktopUI.SignalsTest do
 
   describe "KeyPressed" do
     test "creates a valid signal with key" do
-      assert {:ok, signal} = Signals.KeyPressed.new(%{
-        key: "a",
-        modifiers: [:shift]
-      })
+      assert {:ok, signal} =
+               Signals.KeyPressed.new(%{
+                 key: "a",
+                 modifiers: [:shift]
+               })
 
       assert signal.type == "desktop_ui.ui.key_pressed"
       assert signal.source == "/desktop_ui/input"
@@ -125,66 +133,80 @@ defmodule DesktopUI.SignalsTest do
     end
 
     test "creates a valid signal without modifiers" do
-      assert {:ok, signal} = Signals.KeyPressed.new(%{
-        key: "escape"
-      })
+      assert {:ok, signal} =
+               Signals.KeyPressed.new(%{
+                 key: "escape"
+               })
 
       assert signal.data.key == "escape"
       assert signal.data.modifiers == []
     end
 
     test "defaults modifiers to empty list" do
-      assert {:ok, signal} = Signals.KeyPressed.new(%{
-        key: "enter"
-      })
+      assert {:ok, signal} =
+               Signals.KeyPressed.new(%{
+                 key: "enter"
+               })
 
       assert signal.data.modifiers == []
     end
 
     test "validates key is required" do
-      assert {:error, _reason} = Signals.KeyPressed.new(%{
-        modifiers: [:ctrl]
-      })
+      assert {:error, _reason} =
+               Signals.KeyPressed.new(%{
+                 modifiers: [:ctrl]
+               })
     end
 
     test "allows multiple modifiers" do
-      assert {:ok, signal} = Signals.KeyPressed.new(%{
-        key: "s",
-        modifiers: [:ctrl, :shift]
-      })
+      assert {:ok, signal} =
+               Signals.KeyPressed.new(%{
+                 key: "s",
+                 modifiers: [:ctrl, :shift]
+               })
 
       assert signal.data.modifiers == [:ctrl, :shift]
     end
 
     test "validates all modifier values" do
-      assert {:ok, _} = Signals.KeyPressed.new(%{
-        key: "a",
-        modifiers: [:shift]
-      })
-      assert {:ok, _} = Signals.KeyPressed.new(%{
-        key: "b",
-        modifiers: [:ctrl]
-      })
-      assert {:ok, _} = Signals.KeyPressed.new(%{
-        key: "c",
-        modifiers: [:alt]
-      })
-      assert {:ok, _} = Signals.KeyPressed.new(%{
-        key: "d",
-        modifiers: [:meta]
-      })
-      assert {:error, _} = Signals.KeyPressed.new(%{
-        key: "e",
-        modifiers: [:invalid]
-      })
+      assert {:ok, _} =
+               Signals.KeyPressed.new(%{
+                 key: "a",
+                 modifiers: [:shift]
+               })
+
+      assert {:ok, _} =
+               Signals.KeyPressed.new(%{
+                 key: "b",
+                 modifiers: [:ctrl]
+               })
+
+      assert {:ok, _} =
+               Signals.KeyPressed.new(%{
+                 key: "c",
+                 modifiers: [:alt]
+               })
+
+      assert {:ok, _} =
+               Signals.KeyPressed.new(%{
+                 key: "d",
+                 modifiers: [:meta]
+               })
+
+      assert {:error, _} =
+               Signals.KeyPressed.new(%{
+                 key: "e",
+                 modifiers: [:invalid]
+               })
     end
   end
 
   describe "RenderRequest" do
     test "creates a valid signal with required fields" do
-      assert {:ok, signal} = Signals.RenderRequest.new(%{
-        component_id: "counter_123"
-      })
+      assert {:ok, signal} =
+               Signals.RenderRequest.new(%{
+                 component_id: "counter_123"
+               })
 
       assert signal.type == "desktop_ui.render.request"
       assert signal.source == "/desktop_ui/coordinator"
@@ -193,35 +215,39 @@ defmodule DesktopUI.SignalsTest do
     end
 
     test "allows force flag" do
-      assert {:ok, signal} = Signals.RenderRequest.new(%{
-        component_id: "counter_123",
-        force: true
-      })
+      assert {:ok, signal} =
+               Signals.RenderRequest.new(%{
+                 component_id: "counter_123",
+                 force: true
+               })
 
       assert signal.data.force == true
     end
 
     test "defaults force to false" do
-      assert {:ok, signal} = Signals.RenderRequest.new(%{
-        component_id: "counter_123"
-      })
+      assert {:ok, signal} =
+               Signals.RenderRequest.new(%{
+                 component_id: "counter_123"
+               })
 
       assert signal.data.force == false
     end
 
     test "validates component_id is required" do
-      assert {:error, _reason} = Signals.RenderRequest.new(%{
-        force: true
-      })
+      assert {:error, _reason} =
+               Signals.RenderRequest.new(%{
+                 force: true
+               })
     end
   end
 
   describe "WindowResized" do
     test "creates a valid signal with width and height" do
-      assert {:ok, signal} = Signals.WindowResized.new(%{
-        width: 800,
-        height: 600
-      })
+      assert {:ok, signal} =
+               Signals.WindowResized.new(%{
+                 width: 800,
+                 height: 600
+               })
 
       assert signal.type == "desktop_ui.window.resized"
       assert signal.source == "/desktop_ui/runtime"
@@ -230,29 +256,33 @@ defmodule DesktopUI.SignalsTest do
     end
 
     test "validates width is required" do
-      assert {:error, _reason} = Signals.WindowResized.new(%{
-        height: 600
-      })
+      assert {:error, _reason} =
+               Signals.WindowResized.new(%{
+                 height: 600
+               })
     end
 
     test "validates height is required" do
-      assert {:error, _reason} = Signals.WindowResized.new(%{
-        width: 800
-      })
+      assert {:error, _reason} =
+               Signals.WindowResized.new(%{
+                 width: 800
+               })
     end
 
     test "validates width is integer" do
-      assert {:error, _reason} = Signals.WindowResized.new(%{
-        width: "800",
-        height: 600
-      })
+      assert {:error, _reason} =
+               Signals.WindowResized.new(%{
+                 width: "800",
+                 height: 600
+               })
     end
 
     test "validates height is integer" do
-      assert {:error, _reason} = Signals.WindowResized.new(%{
-        width: 800,
-        height: "600"
-      })
+      assert {:error, _reason} =
+               Signals.WindowResized.new(%{
+                 width: 800,
+                 height: "600"
+               })
     end
   end
 
@@ -268,6 +298,213 @@ defmodule DesktopUI.SignalsTest do
     test "accepts empty map" do
       assert {:ok, signal} = Signals.Quit.new(%{})
       assert signal.type == "desktop_ui.app.quit"
+    end
+  end
+
+  describe "MousePressed" do
+    test "creates a valid signal with target_id" do
+      assert {:ok, signal} =
+               Signals.MousePressed.new(%{
+                 target_id: :btn_submit,
+                 button: :left,
+                 x: 150,
+                 y: 75
+               })
+
+      assert signal.type == "desktop_ui.ui.mouse_pressed"
+      assert signal.source == "/desktop_ui/input"
+      assert signal.data.target_id == :btn_submit
+      assert signal.data.button == :left
+      assert signal.data.x == 150
+      assert signal.data.y == 75
+    end
+
+    test "creates a valid signal without target_id" do
+      assert {:ok, signal} =
+               Signals.MousePressed.new(%{
+                 button: :right
+               })
+
+      assert signal.type == "desktop_ui.ui.mouse_pressed"
+      assert signal.data.button == :right
+      refute Map.has_key?(signal.data, :target_id)
+    end
+
+    test "defaults button to :left" do
+      assert {:ok, signal} =
+               Signals.MousePressed.new(%{
+                 button: :left,
+                 x: 100,
+                 y: 50
+               })
+
+      assert signal.data.button == :left
+    end
+
+    test "validates button is valid value" do
+      assert {:ok, _} = Signals.MousePressed.new(%{button: :left})
+      assert {:ok, _} = Signals.MousePressed.new(%{button: :middle})
+      assert {:ok, _} = Signals.MousePressed.new(%{button: :right})
+      assert {:error, _} = Signals.MousePressed.new(%{button: :invalid})
+    end
+  end
+
+  describe "KeyReleased" do
+    test "creates a valid signal with key" do
+      assert {:ok, signal} =
+               Signals.KeyReleased.new(%{
+                 key: "a",
+                 modifiers: [:shift]
+               })
+
+      assert signal.type == "desktop_ui.ui.key_released"
+      assert signal.source == "/desktop_ui/input"
+      assert signal.data.key == "a"
+      assert signal.data.modifiers == [:shift]
+    end
+
+    test "creates a valid signal without modifiers" do
+      assert {:ok, signal} =
+               Signals.KeyReleased.new(%{
+                 key: "escape"
+               })
+
+      assert signal.data.key == "escape"
+      assert signal.data.modifiers == []
+    end
+
+    test "defaults modifiers to empty list" do
+      assert {:ok, signal} =
+               Signals.KeyReleased.new(%{
+                 key: "enter"
+               })
+
+      assert signal.data.modifiers == []
+    end
+
+    test "validates key is required" do
+      assert {:error, _reason} =
+               Signals.KeyReleased.new(%{
+                 modifiers: [:ctrl]
+               })
+    end
+
+    test "allows multiple modifiers" do
+      assert {:ok, signal} =
+               Signals.KeyReleased.new(%{
+                 key: "s",
+                 modifiers: [:ctrl, :shift]
+               })
+
+      assert signal.data.modifiers == [:ctrl, :shift]
+    end
+
+    test "validates all modifier values" do
+      assert {:ok, _} =
+               Signals.KeyReleased.new(%{
+                 key: "a",
+                 modifiers: [:shift]
+               })
+
+      assert {:ok, _} =
+               Signals.KeyReleased.new(%{
+                 key: "b",
+                 modifiers: [:ctrl]
+               })
+
+      assert {:ok, _} =
+               Signals.KeyReleased.new(%{
+                 key: "c",
+                 modifiers: [:alt]
+               })
+
+      assert {:ok, _} =
+               Signals.KeyReleased.new(%{
+                 key: "d",
+                 modifiers: [:meta]
+               })
+
+      assert {:error, _} =
+               Signals.KeyReleased.new(%{
+                 key: "e",
+                 modifiers: [:invalid]
+               })
+    end
+  end
+
+  describe "ComponentRegister" do
+    test "creates a valid signal with required fields" do
+      pid = self()
+
+      assert {:ok, signal} =
+               Signals.ComponentRegister.new(%{
+                 component_id: "counter_123",
+                 module: DesktopUI.Examples.Counter,
+                 pid: pid
+               })
+
+      assert signal.type == "desktop_ui.component.register"
+      assert signal.source == "/desktop_ui/components"
+      assert signal.data.component_id == "counter_123"
+      assert signal.data.module == DesktopUI.Examples.Counter
+      assert signal.data.pid == pid
+    end
+
+    test "creates a valid signal without pid" do
+      assert {:ok, signal} =
+               Signals.ComponentRegister.new(%{
+                 component_id: "label_456",
+                 module: DesktopUI.Widget
+               })
+
+      assert signal.data.component_id == "label_456"
+      assert signal.data.module == DesktopUI.Widget
+      refute Map.has_key?(signal.data, :pid)
+    end
+
+    test "validates component_id is required" do
+      pid = self()
+
+      assert {:error, _reason} =
+               Signals.ComponentRegister.new(%{
+                 module: DesktopUI.Examples.Counter,
+                 pid: pid
+               })
+    end
+
+    test "validates module is required" do
+      assert {:error, _reason} =
+               Signals.ComponentRegister.new(%{
+                 component_id: "counter_123"
+               })
+    end
+
+    test "validates module is an atom" do
+      assert {:error, _reason} =
+               Signals.ComponentRegister.new(%{
+                 component_id: "counter_123",
+                 module: "DesktopUI.Examples.Counter"
+               })
+    end
+  end
+
+  describe "ComponentUnregister" do
+    test "creates a valid signal with component_id" do
+      assert {:ok, signal} =
+               Signals.ComponentUnregister.new(%{
+                 component_id: "counter_123"
+               })
+
+      assert signal.type == "desktop_ui.component.unregister"
+      assert signal.source == "/desktop_ui/components"
+      assert signal.data.component_id == "counter_123"
+    end
+
+    test "validates component_id is required" do
+      assert {:error, _reason} =
+               Signals.ComponentUnregister.new(%{
+                 # Missing component_id
+               })
     end
   end
 end

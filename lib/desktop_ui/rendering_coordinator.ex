@@ -73,6 +73,7 @@ defmodule DesktopUI.RenderingCoordinator do
   alias DesktopUI.Widget
 
   use GenServer
+  require Logger
 
   # ETS table for component registry (persisted across GenServer callbacks)
   @components_table :desktop_ui_rendering_coordinator_components
@@ -97,10 +98,10 @@ defmodule DesktopUI.RenderingCoordinator do
 
     # Subscribe to all desktop_ui signals
     case Jido.Signal.Bus.subscribe(
-      bus,
-      "desktop_ui.**",
-      dispatch: {:pid, target: self()}
-    ) do
+           bus,
+           "desktop_ui.**",
+           dispatch: {:pid, target: self()}
+         ) do
       {:ok, _sub} ->
         {:ok, %{bus: bus, renderer: renderer, subscribed: true}}
 
@@ -114,7 +115,7 @@ defmodule DesktopUI.RenderingCoordinator do
     table_opts = [
       :named_table,
       :set,
-      :public,
+      :protected,
       read_concurrency: true
     ]
 
@@ -165,20 +166,29 @@ defmodule DesktopUI.RenderingCoordinator do
     module = signal.data.module
     pid = Map.get(signal.data, :pid)
 
-    component_info = %{
-      module: module,
-      pid: pid,
-      registered_at: DateTime.utc_now()
-    }
+    # Validate that the module implements DesktopUI.Elm behaviour
+    if not component_module?(module) do
+      # Log warning and skip registration
+      {:noreply, state}
+    else
+      component_info = %{
+        module: module,
+        pid: pid,
+        registered_at: DateTime.utc_now()
+      }
 
-    # Store in ETS table for persistence
-    :ets.insert(@components_table, {component_id, component_info})
+      # Store in ETS table for persistence
+      :ets.insert(@components_table, {component_id, component_info})
 
-    {:noreply, state}
+      {:noreply, state}
+    end
   end
 
   @impl true
-  def handle_info({:signal, %Jido.Signal{type: "desktop_ui.component.unregister"} = signal}, state) do
+  def handle_info(
+        {:signal, %Jido.Signal{type: "desktop_ui.component.unregister"} = signal},
+        state
+      ) do
     component_id = signal.data.component_id
 
     # Remove from ETS table
@@ -231,11 +241,12 @@ defmodule DesktopUI.RenderingCoordinator do
       module: module
     ]
 
-    data = if pid = Keyword.get(opts, :pid) do
-      Keyword.put(data, :pid, pid)
-    else
-      data
-    end
+    data =
+      if pid = Keyword.get(opts, :pid) do
+        Keyword.put(data, :pid, pid)
+      else
+        data
+      end
 
     # Create and publish the registration signal
     case DesktopUI.Signals.ComponentRegister.new(data) do
@@ -386,18 +397,24 @@ defmodule DesktopUI.RenderingCoordinator do
 
           # Update metrics in ETS
           increment_metric(:renders_completed)
-          :ets.insert(@components_table, {component_id, Map.put(component_info, :last_rendered, DateTime.utc_now())})
+
+          :ets.insert(
+            @components_table,
+            {component_id, Map.put(component_info, :last_rendered, DateTime.utc_now())}
+          )
 
           :ok
 
-        {:error, _reason} ->
+        {:error, reason} ->
           # Log validation error but don't crash
+          Logger.warning("Widget validation failed for component #{component_id}: #{inspect(reason)}")
           increment_metric(:renders_failed)
           :ok
       end
     rescue
-      _error ->
+      error ->
         # Handle any errors from view/1 or rendering
+        Logger.error("Render error for component #{component_id}: #{inspect(error)}")
         increment_metric(:renders_failed)
         :ok
     end
@@ -441,7 +458,9 @@ defmodule DesktopUI.RenderingCoordinator do
           :error
       end
     rescue
-      _ -> :error
+      error ->
+        Logger.debug("Failed to get elm_state from agent: #{inspect(error)}")
+        :error
     end
   end
 
@@ -470,6 +489,17 @@ defmodule DesktopUI.RenderingCoordinator do
         :ok
     end
   end
+
+  # Check if a module implements DesktopUI.Elm behaviour
+  defp component_module?(module) when is_atom(module) do
+    # Check if module has the required DesktopUI.Elm callbacks
+    function_exported?(module, :init, 1) and
+      function_exported?(module, :update, 2) and
+      function_exported?(module, :view, 1) and
+      function_exported?(module, :on_signal, 2)
+  end
+
+  defp component_module?(_), do: false
 
   # No-op renderer for testing/development
   defmodule NoOpRenderer do

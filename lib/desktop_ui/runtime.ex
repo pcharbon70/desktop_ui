@@ -68,11 +68,11 @@ defmodule DesktopUI.Runtime do
   alias DesktopUI.Signals
 
   @type option ::
-    {:root_component, module()}
-    | {:root_component_opts, keyword()}
-    | {:renderer, atom() | {atom(), atom()}}
-    | {:bus, atom()}
-    | {:name, atom()}
+          {:root_component, module()}
+          | {:root_component_opts, keyword()}
+          | {:renderer, atom() | {atom(), atom()}}
+          | {:bus, atom()}
+          | {:name, atom()}
 
   # Client API
 
@@ -181,7 +181,9 @@ defmodule DesktopUI.Runtime do
     # the provided name. Instead, we find the child by PID from the
     # supervisor's children.
     case Process.whereis(DesktopUI.Runtime) do
-      nil -> nil
+      nil ->
+        nil
+
       runtime_pid when is_pid(runtime_pid) ->
         # Get the children of the runtime supervisor
         children = Supervisor.which_children(runtime_pid)
@@ -189,8 +191,8 @@ defmodule DesktopUI.Runtime do
         # Find the Jido.Agent.Server child (root component)
         # Children are returned as [{id, pid, type, modules}]
         case Enum.find(children, fn {id, _pid, _type, _modules} ->
-          id == Jido.Agent.Server
-        end) do
+               id == Jido.Agent.Server
+             end) do
           {_, pid, _, _} when is_pid(pid) -> pid
           _ -> nil
         end
@@ -199,13 +201,15 @@ defmodule DesktopUI.Runtime do
 
   def get_root_component(runtime_name) when is_atom(runtime_name) do
     case Process.whereis(runtime_name) do
-      nil -> nil
+      nil ->
+        nil
+
       runtime_pid when is_pid(runtime_pid) ->
         children = Supervisor.which_children(runtime_pid)
 
         case Enum.find(children, fn {id, _pid, _type, _modules} ->
-          id == Jido.Agent.Server
-        end) do
+               id == Jido.Agent.Server
+             end) do
           {_, pid, _, _} when is_pid(pid) -> pid
           _ -> nil
         end
@@ -228,14 +232,14 @@ defmodule DesktopUI.Runtime do
       {Jido.Signal.Bus, [name: bus]},
       # RenderingCoordinator depends on signal bus
       {DesktopUI.RenderingCoordinator,
-        [renderer: renderer, bus: bus, name: :rendering_coordinator]},
+       [renderer: renderer, bus: bus, name: :rendering_coordinator]},
       # Root component starts last
       {Jido.Agent.Server,
-        [
-          agent: root_component,
-          opts: root_component_opts,
-          name: :root_component
-        ]}
+       [
+         agent: root_component,
+         opts: root_component_opts,
+         name: :root_component
+       ]}
     ]
 
     # After children start, register root component with coordinator
@@ -255,10 +259,13 @@ defmodule DesktopUI.Runtime do
     # Convert atom key to string for signal schema
     key_str = if is_atom(key), do: Atom.to_string(key), else: key
 
-    Signals.KeyPressed.new(%{
-      key: key_str,
-      modifiers: modifiers
-    }, source: "/desktop_ui/runtime")
+    Signals.KeyPressed.new(
+      %{
+        key: key_str,
+        modifiers: modifiers
+      },
+      source: "/desktop_ui/runtime"
+    )
   end
 
   defp convert_event_to_signal({:sdl_keyup, data}, _bus) do
@@ -268,10 +275,13 @@ defmodule DesktopUI.Runtime do
     # Convert atom key to string for signal schema
     key_str = if is_atom(key), do: Atom.to_string(key), else: key
 
-    Signals.KeyReleased.new(%{
-      key: key_str,
-      modifiers: modifiers
-    }, source: "/desktop_ui/runtime")
+    Signals.KeyReleased.new(
+      %{
+        key: key_str,
+        modifiers: modifiers
+      },
+      source: "/desktop_ui/runtime"
+    )
   end
 
   defp convert_event_to_signal({:sdl_mouseup, data}, _bus) do
@@ -281,12 +291,15 @@ defmodule DesktopUI.Runtime do
     y = Keyword.get(data, :y, 0)
 
     if target_id do
-      Signals.Clicked.new(%{
-        target_id: target_id,
-        button: button,
-        x: x,
-        y: y
-      }, source: "/desktop_ui/runtime")
+      Signals.Clicked.new(
+        %{
+          target_id: target_id,
+          button: button,
+          x: x,
+          y: y
+        },
+        source: "/desktop_ui/runtime"
+      )
     else
       {:error, :no_target_id}
     end
@@ -299,12 +312,15 @@ defmodule DesktopUI.Runtime do
     y = Keyword.get(data, :y, 0)
 
     if target_id do
-      Signals.MousePressed.new(%{
-        target_id: target_id,
-        button: button,
-        x: x,
-        y: y
-      }, source: "/desktop_ui/runtime")
+      Signals.MousePressed.new(
+        %{
+          target_id: target_id,
+          button: button,
+          x: x,
+          y: y
+        },
+        source: "/desktop_ui/runtime"
+      )
     else
       {:error, :no_target_id}
     end
