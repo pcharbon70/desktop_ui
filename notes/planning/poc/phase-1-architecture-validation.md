@@ -227,18 +227,18 @@ Implement a validating renderer:
 
 Create the runtime that starts agents and bridges external events to signals.
 
-- [ ] **Task 1.7** Create `DesktopUI.Runtime` bootstrap supervisor
+- [x] **Task 1.7** Create `DesktopUI.Runtime` bootstrap supervisor
 
 Implement the runtime as a bootstrap and event bridge:
 
-- [ ] 1.7.1 Define `child_spec/1` for OTP supervision integration
-- [ ] 1.7.2 Implement `start_link/2` with root component and renderer options
-- [ ] 1.7.3 Start Jido.Signal.Bus with name `:desktop_ui`
-- [ ] 1.7.4 Start RenderingCoordinator agent
-- [ ] 1.7.5 Start root component as Jido agent
-- [ ] 1.7.6 Register root component with RenderingCoordinator
-- [ ] 1.7.7 Implement event bridge for converting external events to signals
-- [ ] 1.7.8 Handle shutdown and cleanup of all agents
+- [x] 1.7.1 Define `child_spec/1` for OTP supervision integration
+- [x] 1.7.2 Implement `start_link/2` with root component and renderer options
+- [x] 1.7.3 Start Jido.Signal.Bus with name `:desktop_ui`
+- [x] 1.7.4 Start RenderingCoordinator agent
+- [x] 1.7.5 Start root component as Jido agent
+- [x] 1.7.6 Register root component with RenderingCoordinator
+- [x] 1.7.7 Implement event bridge for converting external events to signals
+- [x] 1.7.8 Handle shutdown and cleanup of all agents
 
 **Implementation Notes:**
 - Runtime is NOT a central orchestrator—agents are autonomous
@@ -249,12 +249,14 @@ Implement the runtime as a bootstrap and event bridge:
 - Support graceful shutdown of all agents
 
 **Unit Tests for Section 1.7:**
-- [ ] 1.7.1 Verify runtime starts signal bus
-- [ ] 1.7.2 Verify runtime starts RenderingCoordinator
-- [ ] 1.7.3 Verify runtime starts root component agent
-- [ ] 1.7.4 Verify runtime bridges events to signals
-- [ ] 1.7.5 Verify runtime shuts down cleanly
-- [ ] 1.7.6 Verify agent crashes are isolated
+- [x] 1.7.1 Verify runtime starts signal bus
+- [x] 1.7.2 Verify runtime starts RenderingCoordinator
+- [x] 1.7.3 Verify runtime starts root component agent
+- [x] 1.7.4 Verify runtime bridges events to signals
+- [x] 1.7.5 Verify runtime shuts down cleanly
+- [x] 1.7.6 Verify agent crashes are isolated
+
+**Status:** Completed 2025-01-24 - See `notes/summaries/section-1.7-runtime.md` for details.
 
 ---
 

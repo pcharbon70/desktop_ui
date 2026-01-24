@@ -116,6 +116,49 @@ defmodule DesktopUI.Signals do
   end
 
   @doc """
+  Signal published when a mouse button is pressed.
+
+  The Runtime event bridge publishes this signal after receiving
+  SDL mouse button events. Component agents can handle these
+  signals via their `on_signal/2` callback.
+
+  ## Fields
+
+  - `target_id` - The widget that was pressed (optional, determined by hit testing)
+  - `button` - Which mouse button was pressed (:left, :middle, :right)
+  - `x` - X coordinate of the press (optional)
+  - `y` - Y coordinate of the press (optional)
+  """
+  defmodule MousePressed do
+    use Jido.Signal,
+      type: "desktop_ui.ui.mouse_pressed",
+      default_source: "/desktop_ui/input",
+      schema: [
+        target_id: [
+          type: :atom,
+          required: false,
+          doc: "The widget that was pressed (determined by hit testing)"
+        ],
+        button: [
+          type: {:in, [:left, :middle, :right]},
+          required: true,
+          default: :left,
+          doc: "Which mouse button was pressed"
+        ],
+        x: [
+          type: :integer,
+          required: false,
+          doc: "X coordinate of the press"
+        ],
+        y: [
+          type: :integer,
+          required: false,
+          doc: "Y coordinate of the press"
+        ]
+      ]
+  end
+
+  @doc """
   Signal published when a keyboard key is pressed.
 
   The Runtime event bridge publishes this signal after receiving
@@ -136,6 +179,37 @@ defmodule DesktopUI.Signals do
           type: :string,
           required: true,
           doc: "The key that was pressed (e.g., 'a', 'escape', 'enter')"
+        ],
+        modifiers: [
+          type: {:list, {:in, [:shift, :ctrl, :alt, :meta]}},
+          required: false,
+          default: [],
+          doc: "List of modifier keys that were held"
+        ]
+      ]
+  end
+
+  @doc """
+  Signal published when a keyboard key is released.
+
+  The Runtime event bridge publishes this signal after receiving
+  SDL keyboard events. Component agents can handle these
+  signals via their `on_signal/2` callback.
+
+  ## Fields
+
+  - `key` - The key that was released (required)
+  - `modifiers` - List of modifier keys that were held (:shift, :ctrl, :alt, :meta)
+  """
+  defmodule KeyReleased do
+    use Jido.Signal,
+      type: "desktop_ui.ui.key_released",
+      default_source: "/desktop_ui/input",
+      schema: [
+        key: [
+          type: :string,
+          required: true,
+          doc: "The key that was released (e.g., 'a', 'escape', 'enter')"
         ],
         modifiers: [
           type: {:list, {:in, [:shift, :ctrl, :alt, :meta]}},
