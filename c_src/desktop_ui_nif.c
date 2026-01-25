@@ -332,6 +332,14 @@ static inline int SDL_WaitEventTimeout(SDL_Event* event, int timeout) {
 #define MAX_WINDOW_WIDTH 7680
 #define MAX_WINDOW_HEIGHT 4320
 
+/* Maximum window title length
+ * SDL2 doesn't enforce a strict limit, but reasonable bounds prevent:
+ * - Memory exhaustion from extremely long titles
+ * - Display issues with truncated titles
+ * - Potential buffer overflows in platform-specific window managers
+ */
+#define MAX_WINDOW_TITLE_LENGTH 1024
+
 /* Window resource structure - tracks an SDL_Window */
 typedef struct {
     SDL_Window* window;
@@ -839,6 +847,24 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
         return enif_make_badarg(env);
     }
 
+    // Validate title is not empty
+    if (title_bin.size == 0) {
+        set_last_error(state, "Window title cannot be empty");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Window title cannot be empty", ERL_NIF_UTF8));
+    }
+
+    // Validate title length
+    if (title_bin.size >= MAX_WINDOW_TITLE_LENGTH) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window title exceeds maximum length (actual: %zu bytes, max: %d bytes)",
+                 title_bin.size, MAX_WINDOW_TITLE_LENGTH);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
+    }
+
     // Extract width (integer)
     int width;
     if (!enif_get_int(env, argv[1], &width)) {
@@ -884,10 +910,10 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
     }
 
     // Create null-terminated title string
-    char title_str[512];
-    size_t copy_len = title_bin.size < sizeof(title_str) - 1 ? title_bin.size : sizeof(title_str) - 1;
-    memcpy(title_str, title_bin.data, copy_len);
-    title_str[copy_len] = '\0';
+    // Buffer size is MAX_WINDOW_TITLE_LENGTH + 1 for null terminator
+    char title_str[MAX_WINDOW_TITLE_LENGTH + 1];
+    memcpy(title_str, title_bin.data, title_bin.size);
+    title_str[title_bin.size] = '\0';
 
     // Create the window
     SDL_Window* window = SDL_CreateWindow(
@@ -1187,6 +1213,24 @@ static ERL_NIF_TERM nif_set_window_title(ErlNifEnv* env, int argc, const ERL_NIF
         return enif_make_badarg(env);
     }
 
+    // Validate title is not empty
+    if (title_bin.size == 0) {
+        set_last_error(state, "Window title cannot be empty");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Window title cannot be empty", ERL_NIF_UTF8));
+    }
+
+    // Validate title length
+    if (title_bin.size >= MAX_WINDOW_TITLE_LENGTH) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window title exceeds maximum length (actual: %zu bytes, max: %d bytes)",
+                 title_bin.size, MAX_WINDOW_TITLE_LENGTH);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
+    }
+
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
@@ -1196,10 +1240,10 @@ static ERL_NIF_TERM nif_set_window_title(ErlNifEnv* env, int argc, const ERL_NIF
     }
 
     // Create null-terminated title string
-    char title_str[512];
-    size_t copy_len = title_bin.size < sizeof(title_str) - 1 ? title_bin.size : sizeof(title_str) - 1;
-    memcpy(title_str, title_bin.data, copy_len);
-    title_str[copy_len] = '\0';
+    // Buffer size is MAX_WINDOW_TITLE_LENGTH + 1 for null terminator
+    char title_str[MAX_WINDOW_TITLE_LENGTH + 1];
+    memcpy(title_str, title_bin.data, title_bin.size);
+    title_str[title_bin.size] = '\0';
 
     // Set window title
     SDL_SetWindowTitle(win->window, title_str);
