@@ -325,6 +325,13 @@ static inline int SDL_WaitEventTimeout(SDL_Event* event, int timeout) {
 /* Maximum number of renderers we can track */
 #define MAX_RENDERERS 128
 
+/* Maximum window dimensions - 8K resolution (7680x4320)
+ * These limits prevent integer overflow and protect against malformed input.
+ * Most practical use cases will be far below these limits.
+ */
+#define MAX_WINDOW_WIDTH 7680
+#define MAX_WINDOW_HEIGHT 4320
+
 /* Window resource structure - tracks an SDL_Window */
 typedef struct {
     SDL_Window* window;
@@ -857,6 +864,17 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
                                 enif_make_string(env, "Invalid window dimensions", ERL_NIF_UTF8));
     }
 
+    // Validate upper bounds to prevent integer overflow
+    if (width > MAX_WINDOW_WIDTH || height > MAX_WINDOW_HEIGHT) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window dimensions exceed maximum (width: %d, max: %d, height: %d, max: %d)",
+                 width, MAX_WINDOW_WIDTH, height, MAX_WINDOW_HEIGHT);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
+    }
+
     // Find available window slot
     int slot = find_window_slot(state);
     if (slot < 0) {
@@ -1090,6 +1108,17 @@ static ERL_NIF_TERM nif_set_window_size(ErlNifEnv* env, int argc, const ERL_NIF_
         set_last_error(state, "Invalid window dimensions");
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
                                 enif_make_string(env, "Invalid window dimensions", ERL_NIF_UTF8));
+    }
+
+    // Validate upper bounds to prevent integer overflow
+    if (width > MAX_WINDOW_WIDTH || height > MAX_WINDOW_HEIGHT) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window dimensions exceed maximum (width: %d, max: %d, height: %d, max: %d)",
+                 width, MAX_WINDOW_WIDTH, height, MAX_WINDOW_HEIGHT);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
     }
 
     // Find window
