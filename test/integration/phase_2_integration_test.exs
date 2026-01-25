@@ -46,7 +46,8 @@ defmodule DesktopUI.Integration.Phase2Test do
   end
 
   describe "SDL2 lifecycle" do
-    setup :require_sdl2
+    # Note: Tests in this describe block require SDL2 to run
+    # If SDL2 is not available, these tests will fail with "SDL2 not available at compile time" errors
 
     test "full initialization and cleanup cycle" do
       # Initialize SDL2
@@ -88,7 +89,6 @@ defmodule DesktopUI.Integration.Phase2Test do
   end
 
   describe "Window management" do
-    setup :require_sdl2
 
     test "create and destroy window" do
       :ok = Graphics.sdl_init()
@@ -197,7 +197,6 @@ defmodule DesktopUI.Integration.Phase2Test do
   end
 
   describe "Drawing primitives" do
-    setup :require_sdl2
 
     test "clear and present window" do
       :ok = Graphics.sdl_init()
@@ -358,7 +357,6 @@ defmodule DesktopUI.Integration.Phase2Test do
   end
 
   describe "Event polling" do
-    setup :require_sdl2
 
     test "poll_event returns :no_event when no events available" do
       :ok = Graphics.sdl_init()
@@ -449,7 +447,6 @@ defmodule DesktopUI.Integration.Phase2Test do
       end
     end
 
-    setup :require_sdl2
 
     test "full graphics workflow" do
       :ok = Graphics.sdl_init()
@@ -767,7 +764,6 @@ defmodule DesktopUI.Integration.Phase2Test do
   end
 
   describe "Resource cleanup" do
-    setup :require_sdl2
 
     test "all SDL resources cleaned up on shutdown" do
       # Ensure clean state
