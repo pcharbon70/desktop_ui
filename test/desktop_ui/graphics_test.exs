@@ -17,8 +17,8 @@ defmodule DesktopUI.GraphicsTest do
       version_str = if is_list(version), do: List.to_string(version), else: version
       assert String.length(version_str) > 0
 
-      # Version should be "0.2.0-nif" or "0.2.0-fallback"
-      assert version_str =~ ~r/^0\.2\.0-(nif|fallback)$/
+      # Version should be "0.3.0-nif" or "0.3.0-fallback"
+      assert version_str =~ ~r/^0\.3\.0-(nif|fallback)$/
     end
 
     test "nif version contains expected format" do
@@ -103,6 +103,14 @@ defmodule DesktopUI.GraphicsTest do
       assert function_exported?(DesktopUI.Graphics, :get_window_size, 1)
       assert function_exported?(DesktopUI.Graphics, :set_window_size, 3)
       assert function_exported?(DesktopUI.Graphics, :set_window_title, 2)
+      # Renderer and drawing functions should also be exported
+      assert function_exported?(DesktopUI.Graphics, :create_renderer, 1)
+      assert function_exported?(DesktopUI.Graphics, :destroy_renderer, 1)
+      assert function_exported?(DesktopUI.Graphics, :set_render_draw_color, 5)
+      assert function_exported?(DesktopUI.Graphics, :clear_render, 1)
+      assert function_exported?(DesktopUI.Graphics, :draw_rect, 6)
+      assert function_exported?(DesktopUI.Graphics, :fill_rect, 6)
+      assert function_exported?(DesktopUI.Graphics, :present_render, 1)
     end
 
     test "fallback functions return expected values when NIF not loaded" do
@@ -111,7 +119,7 @@ defmodule DesktopUI.GraphicsTest do
       assert is_binary(version) or is_list(version)
 
       version_str = if is_list(version), do: List.to_string(version), else: version
-      assert version_str =~ ~r/^0\.2\.0/
+      assert version_str =~ ~r/^0\.3\.0/
 
       error = Graphics.get_error()
       assert is_binary(error) or is_list(error)
@@ -327,6 +335,315 @@ defmodule DesktopUI.GraphicsTest do
           assert :ok = Graphics.destroy_window(id1)
           assert :ok = Graphics.destroy_window(id2)
           assert :ok = Graphics.destroy_window(id3)
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    # ============================================================================
+    # Renderer and Drawing Tests
+    # ============================================================================
+
+    @tag :sdl2
+    @tag :renderer
+    test "create_renderer/1 creates renderer or returns error when SDL2 unavailable" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create a window first
+          case Graphics.create_window("Renderer Test", 800, 600) do
+            {:ok, window_id} ->
+              # Now create renderer
+              case Graphics.create_renderer(window_id) do
+                {:ok, renderer_id} ->
+                  assert is_integer(renderer_id)
+                  # Clean up
+                  Graphics.destroy_renderer(renderer_id)
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("Failed to create renderer: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - verify error
+          assert {:error, _reason} = Graphics.create_renderer(0)
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "destroy_renderer/1 destroys renderer or returns error" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create window and renderer
+          case Graphics.create_window("Destroy Renderer Test", 800, 600) do
+            {:ok, window_id} ->
+              case Graphics.create_renderer(window_id) do
+                {:ok, renderer_id} ->
+                  # Destroy the renderer
+                  assert :ok = Graphics.destroy_renderer(renderer_id)
+                  # Destroy window
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("Failed to create renderer: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - verify error
+          assert {:error, _reason} = Graphics.destroy_renderer(0)
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "set_render_draw_color/5 sets color or returns error" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create window and renderer
+          case Graphics.create_window("Set Color Test", 800, 600) do
+            {:ok, window_id} ->
+              case Graphics.create_renderer(window_id) do
+                {:ok, renderer_id} ->
+                  # Set draw color
+                  assert :ok = Graphics.set_render_draw_color(renderer_id, 255, 0, 0, 255)
+                  # Clean up
+                  Graphics.destroy_renderer(renderer_id)
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("Failed to create renderer: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - verify error
+          assert {:error, _reason} = Graphics.set_render_draw_color(0, 255, 0, 0, 255)
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "clear_render/1 clears renderer or returns error" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create window and renderer
+          case Graphics.create_window("Clear Render Test", 800, 600) do
+            {:ok, window_id} ->
+              case Graphics.create_renderer(window_id) do
+                {:ok, renderer_id} ->
+                  # Set draw color and clear
+                  assert :ok = Graphics.set_render_draw_color(renderer_id, 0, 0, 0, 255)
+                  assert :ok = Graphics.clear_render(renderer_id)
+                  # Clean up
+                  Graphics.destroy_renderer(renderer_id)
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("Failed to create renderer: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - verify error
+          assert {:error, _reason} = Graphics.clear_render(0)
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "draw_rect/6 draws outline rectangle or returns error" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create window and renderer
+          case Graphics.create_window("Draw Rect Test", 800, 600) do
+            {:ok, window_id} ->
+              case Graphics.create_renderer(window_id) do
+                {:ok, renderer_id} ->
+                  # Clear to black
+                  Graphics.set_render_draw_color(renderer_id, 0, 0, 0, 255)
+                  Graphics.clear_render(renderer_id)
+                  # Draw an outline rectangle
+                  assert :ok = Graphics.draw_rect(renderer_id, 10, 10, 100, 50, {255, 0, 0, 255})
+                  # Present to screen
+                  Graphics.present_render(renderer_id)
+                  # Clean up
+                  Graphics.destroy_renderer(renderer_id)
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("Failed to create renderer: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - verify error
+          assert {:error, _reason} = Graphics.draw_rect(0, 10, 10, 100, 50, {255, 0, 0, 255})
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "fill_rect/6 draws filled rectangle or returns error" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create window and renderer
+          case Graphics.create_window("Fill Rect Test", 800, 600) do
+            {:ok, window_id} ->
+              case Graphics.create_renderer(window_id) do
+                {:ok, renderer_id} ->
+                  # Clear to black
+                  Graphics.set_render_draw_color(renderer_id, 0, 0, 0, 255)
+                  Graphics.clear_render(renderer_id)
+                  # Draw a filled rectangle
+                  assert :ok = Graphics.fill_rect(renderer_id, 10, 10, 100, 50, {0, 255, 0, 255})
+                  # Present to screen
+                  Graphics.present_render(renderer_id)
+                  # Clean up
+                  Graphics.destroy_renderer(renderer_id)
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("Failed to create renderer: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - verify error
+          assert {:error, _reason} = Graphics.fill_rect(0, 10, 10, 100, 50, {0, 255, 0, 255})
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "present_render/1 presents content or returns error" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create window and renderer
+          case Graphics.create_window("Present Render Test", 800, 600) do
+            {:ok, window_id} ->
+              case Graphics.create_renderer(window_id) do
+                {:ok, renderer_id} ->
+                  # Clear to black
+                  Graphics.set_render_draw_color(renderer_id, 0, 0, 0, 255)
+                  Graphics.clear_render(renderer_id)
+                  # Present to screen
+                  assert :ok = Graphics.present_render(renderer_id)
+                  # Clean up
+                  Graphics.destroy_renderer(renderer_id)
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("Failed to create renderer: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - verify error
+          assert {:error, _reason} = Graphics.present_render(0)
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "full rendering lifecycle when SDL2 available" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Test the full rendering lifecycle
+          assert {:ok, window_id} = Graphics.create_window("Lifecycle Render Test", 800, 600)
+          assert {:ok, renderer_id} = Graphics.create_renderer(window_id)
+
+          # Set draw color to black and clear
+          assert :ok = Graphics.set_render_draw_color(renderer_id, 0, 0, 0, 255)
+          assert :ok = Graphics.clear_render(renderer_id)
+
+          # Draw filled rectangles with different colors
+          assert :ok = Graphics.fill_rect(renderer_id, 10, 10, 100, 50, {255, 0, 0, 255})
+          assert :ok = Graphics.fill_rect(renderer_id, 120, 10, 100, 50, {0, 255, 0, 255})
+          assert :ok = Graphics.fill_rect(renderer_id, 230, 10, 100, 50, {0, 0, 255, 255})
+
+          # Draw outline rectangles
+          assert :ok = Graphics.draw_rect(renderer_id, 10, 70, 100, 50, {255, 255, 0, 255})
+          assert :ok = Graphics.draw_rect(renderer_id, 120, 70, 100, 50, {255, 0, 255, 255})
+
+          # Present to screen
+          assert :ok = Graphics.present_render(renderer_id)
+
+          # Clean up
+          assert :ok = Graphics.destroy_renderer(renderer_id)
+          assert :ok = Graphics.destroy_window(window_id)
+
+        {:error, _reason} ->
+          # SDL2 not available - skip lifecycle test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "multiple renderers can be created for different windows" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create multiple windows
+          assert {:ok, window1} = Graphics.create_window("Multi Render 1", 400, 300)
+          assert {:ok, window2} = Graphics.create_window("Multi Render 2", 400, 300)
+
+          # Create renderers for each
+          assert {:ok, renderer1} = Graphics.create_renderer(window1)
+          assert {:ok, renderer2} = Graphics.create_renderer(window2)
+
+          # Renderer IDs should be different
+          assert renderer1 != renderer2
+
+          # Clean up
+          Graphics.destroy_renderer(renderer1)
+          Graphics.destroy_renderer(renderer2)
+          Graphics.destroy_window(window1)
+          Graphics.destroy_window(window2)
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "invalid renderer operations return errors" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Test operations on invalid renderer ID
+          assert {:error, _reason} = Graphics.destroy_renderer(999)
+          assert {:error, _reason} = Graphics.set_render_draw_color(999, 255, 0, 0, 255)
+          assert {:error, _reason} = Graphics.clear_render(999)
+          assert {:error, _reason} = Graphics.draw_rect(999, 10, 10, 100, 50, {255, 0, 0, 255})
+          assert {:error, _reason} = Graphics.fill_rect(999, 10, 10, 100, 50, {255, 0, 0, 255})
+          assert {:error, _reason} = Graphics.present_render(999)
 
         {:error, _reason} ->
           # SDL2 not available - skip test

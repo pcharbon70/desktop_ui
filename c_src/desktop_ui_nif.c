@@ -46,12 +46,18 @@
  */
 #if !DESKTOPUI_HAS_SDL2
 typedef struct SDL_Window SDL_Window;
+typedef struct SDL_Renderer SDL_Renderer;
 struct SDL_Window {
+    int dummy;
+};
+struct SDL_Renderer {
     int dummy;
 };
 
 /* Stub SDL functions for when SDL2 is not available */
 #define SDL_INIT_VIDEO 0x00000020
+#define SDL_RENDERER_ACCELERATED 0x00000002
+#define SDL_RENDERER_PRESENTVSYNC 0x00000004
 static inline int SDL_Init(uint32_t flags) {
     (void)flags;
     return -1;
@@ -82,6 +88,40 @@ static inline void SDL_SetWindowSize(SDL_Window* window, int w, int h) {
 static inline void SDL_SetWindowTitle(SDL_Window* window, const char* title) {
     (void)window; (void)title;
 }
+
+/* Renderer stubs */
+static inline SDL_Renderer* SDL_CreateRenderer(SDL_Window* window, int index, uint32_t flags) {
+    (void)window; (void)index; (void)flags;
+    return NULL;
+}
+static inline void SDL_DestroyRenderer(SDL_Renderer* renderer) {
+    (void)renderer;
+}
+static inline int SDL_SetRenderDrawColor(SDL_Renderer* renderer, Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
+    (void)renderer; (void)r; (void)g; (void)b; (void)a;
+    return -1;
+}
+static inline int SDL_RenderClear(SDL_Renderer* renderer) {
+    (void)renderer;
+    return -1;
+}
+static inline int SDL_RenderDrawRect(SDL_Renderer* renderer, const SDL_Rect* rect) {
+    (void)renderer; (void)rect;
+    return -1;
+}
+static inline int SDL_RenderFillRect(SDL_Renderer* renderer, const SDL_Rect* rect) {
+    (void)renderer; (void)rect;
+    return -1;
+}
+static inline void SDL_RenderPresent(SDL_Renderer* renderer) {
+    (void)renderer;
+}
+typedef struct {
+    Uint8 b, g, r, a;
+} SDL_Color;
+typedef struct {
+    int x, y, w, h;
+} SDL_Rect;
 #endif
 
 /*
@@ -93,6 +133,9 @@ static inline void SDL_SetWindowTitle(SDL_Window* window, const char* title) {
 /* Maximum number of windows we can track */
 #define MAX_WINDOWS 128
 
+/* Maximum number of renderers we can track */
+#define MAX_RENDERERS 128
+
 /* Window resource structure - tracks an SDL_Window */
 typedef struct {
     SDL_Window* window;
@@ -102,6 +145,15 @@ typedef struct {
     int in_use;
 } window_resource_t;
 
+/* Renderer resource structure - tracks an SDL_Renderer */
+typedef struct {
+    SDL_Renderer* renderer;
+    int window_id;              /* Associated window ID */
+    int renderer_id;             /* Our tracking ID */
+    SDL_Color draw_color;       /* Current draw color */
+    int in_use;
+} renderer_resource_t;
+
 typedef struct {
     int initialized;
     int sdl_initialized;       /* Whether SDL_Init was called */
@@ -109,6 +161,8 @@ typedef struct {
     char version[32];
     window_resource_t windows[MAX_WINDOWS];
     int window_count;
+    renderer_resource_t renderers[MAX_RENDERERS];
+    int renderer_count;
 } desktop_ui_nif_state;
 
 /*
@@ -130,10 +184,21 @@ static ERL_NIF_TERM nif_get_window_size(ErlNifEnv* env, int argc, const ERL_NIF_
 static ERL_NIF_TERM nif_set_window_size(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM nif_set_window_title(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 
+/* Renderer and drawing functions */
+static ERL_NIF_TERM nif_create_renderer(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_destroy_renderer(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_set_render_draw_color(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_clear_render(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_draw_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_fill_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_present_render(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+
 /* Helper functions */
 static void set_last_error(desktop_ui_nif_state* state, const char* error);
 static int find_window_slot(desktop_ui_nif_state* state);
 static window_resource_t* find_window_by_id(desktop_ui_nif_state* state, int window_id);
+static int find_renderer_slot(desktop_ui_nif_state* state);
+static renderer_resource_t* find_renderer_by_id(desktop_ui_nif_state* state, int renderer_id);
 
 /*
  * ============================================================================
@@ -165,11 +230,15 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     memset(state->last_error, 0, sizeof(state->last_error));
     strncpy(state->last_error, "No error", sizeof(state->last_error) - 1);
     memset(state->version, 0, sizeof(state->version));
-    strncpy(state->version, "0.2.0-nif", sizeof(state->version) - 1);  /* Bump version for window support */
+    strncpy(state->version, "0.3.0-nif", sizeof(state->version) - 1);  /* Bump version for renderer support */
 
     // Initialize window tracking
     memset(state->windows, 0, sizeof(state->windows));
     state->window_count = 0;
+
+    // Initialize renderer tracking
+    memset(state->renderers, 0, sizeof(state->renderers));
+    state->renderer_count = 0;
 
     // Store state in private data
     *priv_data = (void*) state;
@@ -201,15 +270,19 @@ static int reload(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
         memcpy(new_state->version, old_state->version, sizeof(new_state->version));
         memcpy(new_state->windows, old_state->windows, sizeof(new_state->windows));
         new_state->window_count = old_state->window_count;
+        memcpy(new_state->renderers, old_state->renderers, sizeof(new_state->renderers));
+        new_state->renderer_count = old_state->renderer_count;
     } else {
         new_state->initialized = 1;
         new_state->sdl_initialized = 0;
         memset(new_state->last_error, 0, sizeof(new_state->last_error));
         strncpy(new_state->last_error, "No error", sizeof(new_state->last_error) - 1);
         memset(new_state->version, 0, sizeof(new_state->version));
-        strncpy(new_state->version, "0.2.0-nif", sizeof(new_state->version) - 1);
+        strncpy(new_state->version, "0.3.0-nif", sizeof(new_state->version) - 1);
         memset(new_state->windows, 0, sizeof(new_state->windows));
         new_state->window_count = 0;
+        memset(new_state->renderers, 0, sizeof(new_state->renderers));
+        new_state->renderer_count = 0;
     }
 
     *priv_data = (void*) new_state;
@@ -234,6 +307,17 @@ static void unload(ErlNifEnv* env, void* priv_data)
     (void)env;  // Suppress unused parameter warning
     desktop_ui_nif_state* state = (desktop_ui_nif_state*) priv_data;
     if (state) {
+        // Clean up any remaining renderers first (before windows)
+#if DESKTOPUI_HAS_SDL2
+        for (int i = 0; i < MAX_RENDERERS; i++) {
+            if (state->renderers[i].in_use && state->renderers[i].renderer) {
+                SDL_DestroyRenderer(state->renderers[i].renderer);
+                state->renderers[i].renderer = NULL;
+                state->renderers[i].in_use = 0;
+            }
+        }
+#endif
+
         // Clean up any remaining windows
 #if DESKTOPUI_HAS_SDL2
         for (int i = 0; i < MAX_WINDOWS; i++) {
@@ -412,6 +496,49 @@ static window_resource_t* find_window_by_id(desktop_ui_nif_state* state, int win
     }
 
     return win;
+}
+
+/*
+ * Helper: Find an available renderer slot
+ * Returns slot index or -1 if full
+ */
+#if !DESKTOPUI_HAS_SDL2
+__attribute__((unused))
+#endif
+static int find_renderer_slot(desktop_ui_nif_state* state)
+{
+    if (!state) {
+        return -1;
+    }
+
+    for (int i = 0; i < MAX_RENDERERS; i++) {
+        if (!state->renderers[i].in_use) {
+            return i;
+        }
+    }
+
+    return -1;  // No available slots
+}
+
+/*
+ * Helper: Find a renderer by its ID
+ * Returns pointer to renderer resource or NULL
+ */
+#if !DESKTOPUI_HAS_SDL2
+__attribute__((unused))
+#endif
+static renderer_resource_t* find_renderer_by_id(desktop_ui_nif_state* state, int renderer_id)
+{
+    if (!state || renderer_id < 0 || renderer_id >= MAX_RENDERERS) {
+        return NULL;
+    }
+
+    renderer_resource_t* renderer = &state->renderers[renderer_id];
+    if (!renderer->in_use) {
+        return NULL;
+    }
+
+    return renderer;
 }
 
 /*
@@ -856,6 +983,596 @@ static ERL_NIF_TERM nif_set_window_title(ErlNifEnv* env, int argc, const ERL_NIF
 
 /*
  * ============================================================================
+ * Renderer and Drawing NIF Implementations
+ * ============================================================================
+ */
+
+/*
+ * nif_create_renderer(window_id) -> {:ok, renderer_id} | {:error, reason}
+ *
+ * Create a new SDL2 renderer for a window.
+ *
+ * Parameters:
+ *   - window_id: Window ID (integer, returned from create_window)
+ *
+ * Returns:
+ *   - {:ok, renderer_id} on success
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_create_renderer(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Check if SDL is initialized
+    if (!state->sdl_initialized) {
+        set_last_error(state, "SDL2 not initialized. Call sdl_init/0 first.");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "SDL2 not initialized", ERL_NIF_UTF8));
+    }
+
+    // Extract window_id (integer)
+    int window_id;
+    if (!enif_get_int(env, argv[0], &window_id)) {
+        return enif_make_badarg(env);
+    }
+
+    // Find window
+    window_resource_t* win = find_window_by_id(state, window_id);
+    if (!win) {
+        set_last_error(state, "Invalid window ID");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+    }
+
+    // Find available renderer slot
+    int slot = find_renderer_slot(state);
+    if (slot < 0) {
+        set_last_error(state, "Maximum number of renderers reached");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Maximum number of renderers reached", ERL_NIF_UTF8));
+    }
+
+    // Create the renderer with hardware acceleration and vsync
+    // SDL_RENDERER_ACCELERATED = 0x00000002
+    // SDL_RENDERER_PRESENTVSYNC = 0x00000004
+    Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
+    SDL_Renderer* renderer = SDL_CreateRenderer(win->window, -1, renderer_flags);
+
+    if (!renderer) {
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    }
+
+    // Store renderer in state
+    state->renderers[slot].renderer = renderer;
+    state->renderers[slot].window_id = window_id;
+    state->renderers[slot].renderer_id = slot;
+    // Initialize draw color to white (255, 255, 255, 255)
+    state->renderers[slot].draw_color.r = 255;
+    state->renderers[slot].draw_color.g = 255;
+    state->renderers[slot].draw_color.b = 255;
+    state->renderers[slot].draw_color.a = 255;
+    state->renderers[slot].in_use = 1;
+    state->renderer_count++;
+
+    set_last_error(state, "Renderer created successfully");
+
+    // Return success with renderer id (slot number for our tracking)
+    ERL_NIF_TERM renderer_id_term = enif_make_int(env, slot);
+    return enif_make_tuple2(env, enif_make_atom(env, "ok"), renderer_id_term);
+#endif
+}
+
+/*
+ * nif_destroy_renderer(renderer_id) -> :ok | {:error, reason}
+ *
+ * Destroy an SDL2 renderer and release its resources.
+ *
+ * Parameters:
+ *   - renderer_id: Renderer ID (integer, returned from create_renderer)
+ *
+ * Returns:
+ *   - :ok on success
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_destroy_renderer(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Extract renderer_id (integer)
+    int renderer_id;
+    if (!enif_get_int(env, argv[0], &renderer_id)) {
+        return enif_make_badarg(env);
+    }
+
+    // Find renderer
+    renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
+    if (!ren) {
+        set_last_error(state, "Invalid renderer ID");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+    }
+
+    // Destroy the renderer
+    if (ren->renderer) {
+        SDL_DestroyRenderer(ren->renderer);
+    }
+
+    // Clear the slot
+    ren->renderer = NULL;
+    ren->window_id = 0;
+    ren->renderer_id = 0;
+    ren->draw_color.r = 0;
+    ren->draw_color.g = 0;
+    ren->draw_color.b = 0;
+    ren->draw_color.a = 0;
+    ren->in_use = 0;
+    state->renderer_count--;
+
+    set_last_error(state, "Renderer destroyed successfully");
+    return enif_make_atom(env, "ok");
+#endif
+}
+
+/*
+ * nif_set_render_draw_color(renderer_id, r, g, b, a) -> :ok | {:error, reason}
+ *
+ * Set the draw color for a renderer.
+ *
+ * Parameters:
+ *   - renderer_id: Renderer ID (integer)
+ *   - r: Red component (0-255)
+ *   - g: Green component (0-255)
+ *   - b: Blue component (0-255)
+ *   - a: Alpha component (0-255)
+ *
+ * Returns:
+ *   - :ok on success
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_set_render_draw_color(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 5) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Extract renderer_id (integer)
+    int renderer_id;
+    if (!enif_get_int(env, argv[0], &renderer_id)) {
+        return enif_make_badarg(env);
+    }
+
+    // Extract color components (integers)
+    int r, g, b, a;
+    if (!enif_get_int(env, argv[1], &r) ||
+        !enif_get_int(env, argv[2], &g) ||
+        !enif_get_int(env, argv[3], &b) ||
+        !enif_get_int(env, argv[4], &a)) {
+        return enif_make_badarg(env);
+    }
+
+    // Validate color values
+    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
+        set_last_error(state, "Color values must be between 0 and 255");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+    }
+
+    // Find renderer
+    renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
+    if (!ren) {
+        set_last_error(state, "Invalid renderer ID");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+    }
+
+    // Set the draw color
+    if (SDL_SetRenderDrawColor(ren->renderer, (Uint8)r, (Uint8)g, (Uint8)b, (Uint8)a) < 0) {
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    }
+
+    // Update cached draw color
+    ren->draw_color.r = (Uint8)r;
+    ren->draw_color.g = (Uint8)g;
+    ren->draw_color.b = (Uint8)b;
+    ren->draw_color.a = (Uint8)a;
+
+    set_last_error(state, "Draw color set successfully");
+    return enif_make_atom(env, "ok");
+#endif
+}
+
+/*
+ * nif_clear_render(renderer_id) -> :ok | {:error, reason}
+ *
+ * Clear the renderer target with the current draw color.
+ *
+ * Parameters:
+ *   - renderer_id: Renderer ID (integer)
+ *
+ * Returns:
+ *   - :ok on success
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_clear_render(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Extract renderer_id (integer)
+    int renderer_id;
+    if (!enif_get_int(env, argv[0], &renderer_id)) {
+        return enif_make_badarg(env);
+    }
+
+    // Find renderer
+    renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
+    if (!ren) {
+        set_last_error(state, "Invalid renderer ID");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+    }
+
+    // Clear the renderer
+    if (SDL_RenderClear(ren->renderer) < 0) {
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    }
+
+    set_last_error(state, "Renderer cleared successfully");
+    return enif_make_atom(env, "ok");
+#endif
+}
+
+/*
+ * nif_draw_rect(renderer_id, x, y, w, h, {r, g, b, a}) -> :ok | {:error, reason}
+ *
+ * Draw an outline rectangle.
+ *
+ * Parameters:
+ *   - renderer_id: Renderer ID (integer)
+ *   - x: X position (integer)
+ *   - y: Y position (integer)
+ *   - w: Width (integer)
+ *   - h: Height (integer)
+ *   - color: Color tuple {r, g, b, a} where each component is 0-255
+ *
+ * Returns:
+ *   - :ok on success
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_draw_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 6) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Extract renderer_id (integer)
+    int renderer_id;
+    if (!enif_get_int(env, argv[0], &renderer_id)) {
+        return enif_make_badarg(env);
+    }
+
+    // Extract rectangle position and size
+    int x, y, w, h;
+    if (!enif_get_int(env, argv[1], &x) ||
+        !enif_get_int(env, argv[2], &y) ||
+        !enif_get_int(env, argv[3], &w) ||
+        !enif_get_int(env, argv[4], &h)) {
+        return enif_make_badarg(env);
+    }
+
+    // Extract color tuple {r, g, b, a}
+    int arity;
+    const ERL_NIF_TERM* color_tuple;
+    if (!enif_get_tuple(env, argv[5], &arity, &color_tuple) || arity != 4) {
+        return enif_make_badarg(env);
+    }
+
+    int r, g, b, a;
+    if (!enif_get_int(env, color_tuple[0], &r) ||
+        !enif_get_int(env, color_tuple[1], &g) ||
+        !enif_get_int(env, color_tuple[2], &b) ||
+        !enif_get_int(env, color_tuple[3], &a)) {
+        return enif_make_badarg(env);
+    }
+
+    // Validate color values
+    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
+        set_last_error(state, "Color values must be between 0 and 255");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+    }
+
+    // Find renderer
+    renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
+    if (!ren) {
+        set_last_error(state, "Invalid renderer ID");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+    }
+
+    // Save current draw color
+    SDL_Color saved_color = ren->draw_color;
+
+    // Set new draw color
+    if (SDL_SetRenderDrawColor(ren->renderer, (Uint8)r, (Uint8)g, (Uint8)b, (Uint8)a) < 0) {
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    }
+
+    // Draw the rectangle
+    SDL_Rect rect = {x, y, w, h};
+    int result = SDL_RenderDrawRect(ren->renderer, &rect);
+
+    // Restore original draw color
+    SDL_SetRenderDrawColor(ren->renderer, saved_color.r, saved_color.g, saved_color.b, saved_color.a);
+
+    if (result < 0) {
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    }
+
+    set_last_error(state, "Rectangle drawn successfully");
+    return enif_make_atom(env, "ok");
+#endif
+}
+
+/*
+ * nif_fill_rect(renderer_id, x, y, w, h, {r, g, b, a}) -> :ok | {:error, reason}
+ *
+ * Draw a filled rectangle.
+ *
+ * Parameters:
+ *   - renderer_id: Renderer ID (integer)
+ *   - x: X position (integer)
+ *   - y: Y position (integer)
+ *   - w: Width (integer)
+ *   - h: Height (integer)
+ *   - color: Color tuple {r, g, b, a} where each component is 0-255
+ *
+ * Returns:
+ *   - :ok on success
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_fill_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 6) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Extract renderer_id (integer)
+    int renderer_id;
+    if (!enif_get_int(env, argv[0], &renderer_id)) {
+        return enif_make_badarg(env);
+    }
+
+    // Extract rectangle position and size
+    int x, y, w, h;
+    if (!enif_get_int(env, argv[1], &x) ||
+        !enif_get_int(env, argv[2], &y) ||
+        !enif_get_int(env, argv[3], &w) ||
+        !enif_get_int(env, argv[4], &h)) {
+        return enif_make_badarg(env);
+    }
+
+    // Extract color tuple {r, g, b, a}
+    int arity;
+    const ERL_NIF_TERM* color_tuple;
+    if (!enif_get_tuple(env, argv[5], &arity, &color_tuple) || arity != 4) {
+        return enif_make_badarg(env);
+    }
+
+    int r, g, b, a;
+    if (!enif_get_int(env, color_tuple[0], &r) ||
+        !enif_get_int(env, color_tuple[1], &g) ||
+        !enif_get_int(env, color_tuple[2], &b) ||
+        !enif_get_int(env, color_tuple[3], &a)) {
+        return enif_make_badarg(env);
+    }
+
+    // Validate color values
+    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
+        set_last_error(state, "Color values must be between 0 and 255");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+    }
+
+    // Find renderer
+    renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
+    if (!ren) {
+        set_last_error(state, "Invalid renderer ID");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+    }
+
+    // Save current draw color
+    SDL_Color saved_color = ren->draw_color;
+
+    // Set new draw color
+    if (SDL_SetRenderDrawColor(ren->renderer, (Uint8)r, (Uint8)g, (Uint8)b, (Uint8)a) < 0) {
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    }
+
+    // Draw the filled rectangle
+    SDL_Rect rect = {x, y, w, h};
+    int result = SDL_RenderFillRect(ren->renderer, &rect);
+
+    // Restore original draw color
+    SDL_SetRenderDrawColor(ren->renderer, saved_color.r, saved_color.g, saved_color.b, saved_color.a);
+
+    if (result < 0) {
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    }
+
+    set_last_error(state, "Filled rectangle drawn successfully");
+    return enif_make_atom(env, "ok");
+#endif
+}
+
+/*
+ * nif_present_render(renderer_id) -> :ok | {:error, reason}
+ *
+ * Present the rendered content to the screen.
+ * This swaps the buffers to display what has been rendered.
+ *
+ * Parameters:
+ *   - renderer_id: Renderer ID (integer)
+ *
+ * Returns:
+ *   - :ok on success
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_present_render(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Extract renderer_id (integer)
+    int renderer_id;
+    if (!enif_get_int(env, argv[0], &renderer_id)) {
+        return enif_make_badarg(env);
+    }
+
+    // Find renderer
+    renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
+    if (!ren) {
+        set_last_error(state, "Invalid renderer ID");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+    }
+
+    // Present the rendered content
+    SDL_RenderPresent(ren->renderer);
+
+    set_last_error(state, "Render presented successfully");
+    return enif_make_atom(env, "ok");
+#endif
+}
+
+/*
+ * ============================================================================
  * NIF Function Array
  * ============================================================================
  *
@@ -873,7 +1590,14 @@ static ErlNifFunc nif_funcs[] = {
     {"nif_destroy_window", 1, nif_destroy_window, 0},
     {"nif_get_window_size", 1, nif_get_window_size, 0},
     {"nif_set_window_size", 3, nif_set_window_size, 0},
-    {"nif_set_window_title", 2, nif_set_window_title, 0}
+    {"nif_set_window_title", 2, nif_set_window_title, 0},
+    {"nif_create_renderer", 1, nif_create_renderer, 0},
+    {"nif_destroy_renderer", 1, nif_destroy_renderer, 0},
+    {"nif_set_render_draw_color", 5, nif_set_render_draw_color, 0},
+    {"nif_clear_render", 1, nif_clear_render, 0},
+    {"nif_draw_rect", 6, nif_draw_rect, 0},
+    {"nif_fill_rect", 6, nif_fill_rect, 0},
+    {"nif_present_render", 1, nif_present_render, 0}
 };
 
 /*
