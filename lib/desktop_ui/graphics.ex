@@ -801,22 +801,6 @@ defmodule DesktopUI.Graphics do
   #     # Cleanup (renderer destroyed automatically)
   #     DesktopUI.Graphics.destroy_window(window_id)
 
-  # Module attributes for named colors
-  @named_colors %{
-    black: {0, 0, 0, 255},
-    white: {255, 255, 255, 255},
-    red: {255, 0, 0, 255},
-    green: {0, 255, 0, 255},
-    blue: {0, 0, 255, 255},
-    yellow: {255, 255, 0, 255},
-    cyan: {0, 255, 255, 255},
-    magenta: {255, 0, 255, 255},
-    transparent: {0, 0, 0, 0},
-    gray: {128, 128, 128, 255},
-    dark_gray: {64, 64, 64, 255},
-    light_gray: {192, 192, 192, 255}
-  }
-
   @doc """
   Initialize the SDL2 subsystem (convenience alias for `sdl_init/0`).
 
@@ -864,7 +848,7 @@ defmodule DesktopUI.Graphics do
   @spec clear_window(non_neg_integer(), term()) :: :ok | {:error, String.t()}
   def clear_window(window_id, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- normalize_color(color),
+         {r, g, b, a} <- Color.normalize(color),
          :ok <- set_render_draw_color(renderer_id, r, g, b, a),
       do: clear_render(renderer_id)
   end
@@ -899,7 +883,7 @@ defmodule DesktopUI.Graphics do
           :ok | {:error, String.t()}
   def draw_rect_on_window(window_id, x, y, w, h, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- normalize_color(color),
+         {r, g, b, a} <- Color.normalize(color),
       do: nif_draw_rect(renderer_id, x, y, w, h, {r, g, b, a})
   end
 
@@ -933,7 +917,7 @@ defmodule DesktopUI.Graphics do
           :ok | {:error, String.t()}
   def fill_rect_on_window(window_id, x, y, w, h, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- normalize_color(color),
+         {r, g, b, a} <- Color.normalize(color),
       do: nif_fill_rect(renderer_id, x, y, w, h, {r, g, b, a})
   end
 
@@ -1016,103 +1000,6 @@ defmodule DesktopUI.Graphics do
         :ok
     end
   end
-
-  @doc false
-  # Normalize color to RGBA tuple {r, g, b, a}.
-  defp normalize_color(color) when is_map(color) do
-    has_keys = Map.has_key?(color, :r) and Map.has_key?(color, :g) and
-               Map.has_key?(color, :b) and Map.has_key?(color, :a)
-
-    with true <- has_keys,
-         r when is_integer(r) and r >= 0 and r <= 255 <- Map.get(color, :r),
-         g when is_integer(g) and g >= 0 and g <= 255 <- Map.get(color, :g),
-         b when is_integer(b) and b >= 0 and b <= 255 <- Map.get(color, :b),
-         a when is_integer(a) and a >= 0 and a <= 255 <- Map.get(color, :a) do
-      {r, g, b, a}
-    else
-      _ -> {:error, "Invalid color map. Expected %{r: 0..255, g: 0..255, b: 0..255, a: 0..255}"}
-    end
-  end
-
-  defp normalize_color(color) when is_tuple(color) do
-    case color do
-      {r, g, b, a}
-        when is_integer(r) and r >= 0 and r <= 255 and
-             is_integer(g) and g >= 0 and g <= 255 and
-             is_integer(b) and b >= 0 and b <= 255 and
-             is_integer(a) and a >= 0 and a <= 255 ->
-        {r, g, b, a}
-
-      {r, g, b}
-        when is_integer(r) and r >= 0 and r <= 255 and
-             is_integer(g) and g >= 0 and g <= 255 and
-             is_integer(b) and b >= 0 and b <= 255 ->
-        {r, g, b, 255}
-
-      _ ->
-        {:error, "Invalid color tuple. Expected {r, g, b, a} or {r, g, b} with values 0-255"}
-    end
-  end
-
-  defp normalize_color(color) when is_atom(color) do
-    case Map.get(@named_colors, color) do
-      nil -> {:error, "Unknown named color: #{color}. Available: #{inspect(Map.keys(@named_colors))}"}
-      rgba -> rgba
-    end
-  end
-
-  defp normalize_color(color) when is_binary(color) do
-    parse_hex_color(color)
-  end
-
-  @doc false
-  # Parse hex color string to RGBA tuple.
-  defp parse_hex_color("#" <> hex) do
-    hex = String.downcase(hex)
-
-    normalized =
-      case String.length(hex) do
-        3 -> parse_3digit_hex(hex)
-        6 -> parse_6digit_hex(hex)
-        8 -> parse_8digit_hex(hex)
-        _ -> {:error, "Invalid hex color format. Expected #RGB, #RRGGBB, or #RRGGBBAA"}
-      end
-
-    case normalized do
-      {:error, _} = error -> error
-      rgba -> rgba
-    end
-  end
-
-  defp parse_hex_color(_), do: {:error, "Invalid hex color format. Expected #RGB, #RRGGBB, or #RRGGBBAA"}
-
-  defp parse_3digit_hex(<<r::utf8, g::utf8, b::utf8>>) do
-    with {r_int, ""} <- Integer.parse(String.duplicate(<<r>>, 2), 16),
-         {g_int, ""} <- Integer.parse(String.duplicate(<<g>>, 2), 16),
-         {b_int, ""} <- Integer.parse(String.duplicate(<<b>>, 2), 16),
-      do: {r_int, g_int, b_int, 255}
-  end
-
-  defp parse_3digit_hex(_), do: {:error, "Invalid 3-digit hex color"}
-
-  defp parse_6digit_hex(<<r1::utf8, r2::utf8, g1::utf8, g2::utf8, b1::utf8, b2::utf8>>) do
-    with {r_int, ""} <- Integer.parse(<<r1, r2>>, 16),
-         {g_int, ""} <- Integer.parse(<<g1, g2>>, 16),
-         {b_int, ""} <- Integer.parse(<<b1, b2>>, 16),
-      do: {r_int, g_int, b_int, 255}
-  end
-
-  defp parse_6digit_hex(_), do: {:error, "Invalid 6-digit hex color"}
-
-  defp parse_8digit_hex(<<r1::utf8, r2::utf8, g1::utf8, g2::utf8, b1::utf8, b2::utf8, a1::utf8, a2::utf8>>) do
-    with {r_int, ""} <- Integer.parse(<<r1, r2>>, 16),
-         {g_int, ""} <- Integer.parse(<<g1, g2>>, 16),
-         {b_int, ""} <- Integer.parse(<<b1, b2>>, 16),
-         {a_int, ""} <- Integer.parse(<<a1, a2>>, 16),
-      do: {r_int, g_int, b_int, a_int}
-  end
-
-  defp parse_8digit_hex(_), do: {:error, "Invalid 8-digit hex color"}
 
   # ============================================================================
   # NIF Loading
