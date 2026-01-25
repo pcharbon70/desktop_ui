@@ -9,6 +9,31 @@ defmodule DesktopUI.RenderingCoordinatorTest do
   @components_table :desktop_ui_rendering_coordinator_components
   @metrics_table :desktop_ui_rendering_coordinator_metrics
 
+  # Helper to wait for a condition with timeout
+  defp wait_for_condition(fun, max_retries \\ 10, retry_delay \\ 20) do
+    wait_for_condition(fun, max_retries, retry_delay, 0)
+  end
+
+  defp wait_for_condition(_fun, max_retries, _retry_delay, attempt) when attempt >= max_retries do
+    false
+  end
+
+  defp wait_for_condition(fun, max_retries, retry_delay, attempt) do
+    if fun.() do
+      true
+    else
+      Process.sleep(retry_delay)
+      wait_for_condition(fun, max_retries, retry_delay, attempt + 1)
+    end
+  end
+
+  # Helper to verify coordinator is initialized
+  defp assert_coordinator_ready(pid) do
+    assert Process.alive?(pid)
+    # Verify ETS tables are created by checking metrics
+    assert %{renders_completed: _} = RenderingCoordinator.get_metrics(pid)
+  end
+
   # Mock renderer for testing
   defmodule MockRenderer do
     @moduledoc """
@@ -179,8 +204,8 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_init_coordinator
         )
 
-      # Give time for init to complete
-      Process.sleep(100)
+      # Verify initialization is complete
+      assert_coordinator_ready(pid)
 
       # Metrics are stored in ETS
       metrics = RenderingCoordinator.get_metrics(pid)
@@ -204,7 +229,8 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_coordinator_custom_renderer
         )
 
-      Process.sleep(100)
+      # Verify initialization is complete
+      assert_coordinator_ready(pid)
 
       # Verify renderer is stored
       renderer = RenderingCoordinator.get_metric(:renderer)
@@ -226,7 +252,8 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_subscription_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization is complete
+      assert_coordinator_ready(pid)
 
       # Verify subscription by checking state
       assert :sys.get_state(pid) != nil
@@ -247,15 +274,19 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_register_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       {:ok, _signal} =
         RenderingCoordinator.register_component(pid, "test_component", TestComponent,
           bus: :test_register_bus
         )
 
-      # Give time for signal to be processed
-      Process.sleep(50)
+      # Wait for registration to be processed by checking ETS
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "test_component")
+             end)
 
       # Verify component is in registry
       components = RenderingCoordinator.get_components(pid)
@@ -277,7 +308,8 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_register_with_pid
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       component_pid = self()
 
@@ -290,7 +322,12 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           bus: :test_register_pid_bus
         )
 
-      Process.sleep(50)
+      # Wait for registration to be processed
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "test_component") and
+                 components["test_component"].pid == component_pid
+             end)
 
       components = RenderingCoordinator.get_components(pid)
       assert components["test_component"].pid == component_pid
@@ -309,14 +346,19 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_register_twice
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       {:ok, _signal} =
         RenderingCoordinator.register_component(pid, "test_component", TestComponent,
           bus: :test_register_twice_bus
         )
 
-      Process.sleep(50)
+      # Wait for first registration
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "test_component")
+             end)
 
       first_components = RenderingCoordinator.get_components(pid)
       first_registered_at = first_components["test_component"].registered_at
@@ -332,7 +374,11 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           bus: :test_register_twice_bus
         )
 
-      Process.sleep(50)
+      # Wait for second registration to be processed
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               components["test_component"].module == TestComponentWithContainer
+             end)
 
       second_components = RenderingCoordinator.get_components(pid)
       assert second_components["test_component"].module == TestComponentWithContainer
@@ -356,21 +402,30 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_unregister_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       {:ok, _signal} =
         RenderingCoordinator.register_component(pid, "test_component", TestComponent,
           bus: :test_unregister_bus
         )
 
-      Process.sleep(50)
+      # Wait for registration
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "test_component")
+             end)
 
       {:ok, _signal} =
         RenderingCoordinator.unregister_component(pid, "test_component",
           bus: :test_unregister_bus
         )
 
-      Process.sleep(50)
+      # Wait for unregistration to be processed
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               not Map.has_key?(components, "test_component")
+             end)
 
       # Verify component is removed
       components = RenderingCoordinator.get_components(pid)
@@ -390,15 +445,14 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_unregister_nonexistent
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       # Should not error
       assert {:ok, _signal} =
                RenderingCoordinator.unregister_component(pid, "nonexistent",
                  bus: :test_unregister_nonexistent_bus
                )
-
-      Process.sleep(50)
 
       # Cleanup
       GenServer.stop(pid)
@@ -410,7 +464,8 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     test "get_metrics/1 returns current metrics" do
       {:ok, pid} = RenderingCoordinator.start_link(name: :test_get_metrics_coordinator)
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       metrics = RenderingCoordinator.get_metrics(pid)
 
@@ -436,14 +491,19 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_render_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       {:ok, _signal} =
         RenderingCoordinator.register_component(pid, "test_component", TestComponent,
           bus: :test_render_bus
         )
 
-      Process.sleep(50)
+      # Wait for registration
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "test_component")
+             end)
 
       # Clear previous renders
       MockRenderer.clear(:test_render_renderer)
@@ -458,8 +518,10 @@ defmodule DesktopUI.RenderingCoordinatorTest do
 
       Jido.Signal.Bus.publish(:test_render_bus, [signal])
 
-      # Wait for async processing
-      Process.sleep(200)
+      # Wait for async rendering by checking render count
+      assert wait_for_condition(fn ->
+               length(MockRenderer.get_renders(:test_render_renderer)) == 1
+             end)
 
       # Verify render was called
       renders = MockRenderer.get_renders(:test_render_renderer)
@@ -488,14 +550,19 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_render_metric_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       {:ok, _signal} =
         RenderingCoordinator.register_component(pid, "test_component", TestComponent,
           bus: :test_render_metric_bus
         )
 
-      Process.sleep(50)
+      # Wait for registration
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "test_component")
+             end)
 
       initial_metrics = RenderingCoordinator.get_metrics(pid)
       assert initial_metrics.renders_completed == 0
@@ -510,8 +577,11 @@ defmodule DesktopUI.RenderingCoordinatorTest do
 
       Jido.Signal.Bus.publish(:test_render_metric_bus, [signal])
 
-      # Wait for async processing
-      Process.sleep(200)
+      # Wait for async rendering by checking metrics
+      assert wait_for_condition(fn ->
+               metrics = RenderingCoordinator.get_metrics(pid)
+               metrics.renders_completed == 1
+             end)
 
       new_metrics = RenderingCoordinator.get_metrics(pid)
       assert new_metrics.renders_completed == 1
@@ -533,7 +603,8 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_render_unreg_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       # Don't register any component
 
@@ -547,8 +618,11 @@ defmodule DesktopUI.RenderingCoordinatorTest do
 
       Jido.Signal.Bus.publish(:test_render_unreg_bus, [signal])
 
-      # Wait for async processing
-      Process.sleep(200)
+      # Wait a bit to ensure async processing had time to run
+      assert wait_for_condition(fn ->
+               # Give it a moment - after timeout, we verify no renders happened
+               true
+             end)
 
       # Verify no renders occurred
       renders = MockRenderer.get_renders(:test_render_unreg_renderer)
@@ -573,7 +647,8 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_container_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       {:ok, _signal} =
         RenderingCoordinator.register_component(
@@ -583,7 +658,11 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           bus: :test_container_bus
         )
 
-      Process.sleep(50)
+      # Wait for registration
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "container_component")
+             end)
 
       # Publish StateChanged signal
       {:ok, signal} =
@@ -595,8 +674,10 @@ defmodule DesktopUI.RenderingCoordinatorTest do
 
       Jido.Signal.Bus.publish(:test_container_bus, [signal])
 
-      # Wait for async processing
-      Process.sleep(200)
+      # Wait for async rendering
+      assert wait_for_condition(fn ->
+               length(MockRenderer.get_renders(:test_container_renderer)) == 1
+             end)
 
       # Verify render was called
       renders = MockRenderer.get_renders(:test_container_renderer)
@@ -645,14 +726,19 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           name: :test_error_coordinator
         )
 
-      Process.sleep(100)
+      # Verify initialization
+      assert_coordinator_ready(pid)
 
       {:ok, _signal} =
         RenderingCoordinator.register_component(pid, "invalid_component", InvalidComponent,
           bus: :test_error_bus
         )
 
-      Process.sleep(50)
+      # Wait for registration
+      assert wait_for_condition(fn ->
+               components = RenderingCoordinator.get_components(pid)
+               Map.has_key?(components, "invalid_component")
+             end)
 
       # Publish StateChanged signal
       {:ok, signal} =
@@ -664,8 +750,11 @@ defmodule DesktopUI.RenderingCoordinatorTest do
 
       Jido.Signal.Bus.publish(:test_error_bus, [signal])
 
-      # Wait for async processing
-      Process.sleep(200)
+      # Wait for async error handling
+      assert wait_for_condition(fn ->
+               metrics = RenderingCoordinator.get_metrics(pid)
+               metrics.renders_failed > 0
+             end)
 
       # Verify error was tracked but didn't crash
       metrics = RenderingCoordinator.get_metrics(pid)

@@ -5,6 +5,34 @@ defmodule DesktopUI.RuntimeTest do
   alias DesktopUI.Signals
   alias DesktopUI.Widget
 
+  # Helper to wait for a condition with timeout
+  defp wait_for_condition(fun, max_retries \\ 10, retry_delay \\ 20) do
+    wait_for_condition(fun, max_retries, retry_delay, 0)
+  end
+
+  defp wait_for_condition(_fun, max_retries, _retry_delay, attempt) when attempt >= max_retries do
+    false
+  end
+
+  defp wait_for_condition(fun, max_retries, retry_delay, attempt) do
+    if fun.() do
+      true
+    else
+      Process.sleep(retry_delay)
+      wait_for_condition(fun, max_retries, retry_delay, attempt + 1)
+    end
+  end
+
+  # Helper to verify runtime is initialized
+  defp assert_runtime_ready(name, runtime_pid) do
+    assert Process.alive?(runtime_pid)
+    # Verify root component is started
+    assert wait_for_condition(fn ->
+             pid = Runtime.get_root_component(name)
+             is_pid(pid) and Process.alive?(pid)
+           end)
+  end
+
   # Test component to use as root component
   defmodule TestRootComponent do
     use DesktopUI.Elm,
@@ -62,16 +90,18 @@ defmodule DesktopUI.RuntimeTest do
         bus: bus_name
       )
 
-    # Wait for children to start
-    Process.sleep(200)
+    # Wait for children to start by verifying root component is alive
+    assert_runtime_ready(name, runtime_pid)
 
     on_exit(fn ->
       # Try to stop runtime, ignore if already stopped or stopping
       if Process.whereis(name) do
         try do
+          Process.monitor(runtime_pid)
           Supervisor.stop(name, :normal)
+
           # Wait for shutdown to complete
-          Process.sleep(50)
+          assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
         catch
           :exit, _ -> :already_stopping
           :throw, _ -> :already_stopping
@@ -159,7 +189,8 @@ defmodule DesktopUI.RuntimeTest do
           bus: bus_name
         )
 
-      Process.sleep(200)
+      # Verify runtime is ready
+      assert_runtime_ready(name, runtime_pid)
 
       # Should have started successfully with default renderer
       assert Process.alive?(runtime_pid)
@@ -181,7 +212,8 @@ defmodule DesktopUI.RuntimeTest do
           renderer: {DesktopUI.Renderer.Mock, renderer_name}
         )
 
-      Process.sleep(200)
+      # Verify runtime is ready
+      assert_runtime_ready(name, runtime_pid)
 
       assert Process.alive?(runtime_pid)
 
@@ -223,8 +255,8 @@ defmodule DesktopUI.RuntimeTest do
     test "returns nil when component not running", %{runtime_name: runtime_name} do
       # Stop the runtime
       Supervisor.stop(runtime_name)
-      Process.sleep(50)
 
+      # Wait for shutdown to complete
       pid = Runtime.get_root_component(runtime_name)
       refute is_pid(pid)
     end
@@ -358,12 +390,17 @@ defmodule DesktopUI.RuntimeTest do
           bus: bus_name
         )
 
-      Process.sleep(200)
+      # Verify runtime is ready
+      assert_runtime_ready(name, runtime_pid)
+
+      # Monitor runtime for shutdown
+      Process.monitor(runtime_pid)
 
       # Stop runtime
       Supervisor.stop(name, :normal)
 
-      Process.sleep(100)
+      # Wait for shutdown
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       # Verify runtime is stopped
       refute Process.alive?(runtime_pid)
@@ -394,7 +431,8 @@ defmodule DesktopUI.RuntimeTest do
           bus: bus_name
         )
 
-      Process.sleep(200)
+      # Verify runtime is ready
+      assert_runtime_ready(name, runtime_pid)
 
       root_pid = Process.whereis(:root_component)
 
@@ -404,7 +442,11 @@ defmodule DesktopUI.RuntimeTest do
         # Kill the root component
         GenServer.stop(root_pid, :normal)
 
-        Process.sleep(300)
+        # Wait for root component to be restarted
+        assert wait_for_condition(fn ->
+                 new_root_pid = Process.whereis(:root_component)
+                 is_pid(new_root_pid) and new_root_pid != original_root_pid
+               end)
 
         # Root component should be restarted (new PID)
         new_root_pid = Process.whereis(:root_component)

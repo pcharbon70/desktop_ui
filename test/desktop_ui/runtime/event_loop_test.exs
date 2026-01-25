@@ -30,20 +30,24 @@ defmodule DesktopUI.Runtime.EventLoopTest do
 
     {:ok, event_loop_pid} = EventLoop.start_link(opts)
 
-    # Wait for initialization
-    Process.sleep(100)
+    # Verify initialization by checking process state
+    assert Process.alive?(event_loop_pid)
 
     on_exit(fn ->
+      # Monitor for shutdown confirmation
+      Process.monitor(event_loop_pid)
+
       # Stop event loop
       if Process.whereis(name) do
         try do
           GenServer.stop(name, :normal)
-          # Wait for shutdown to complete
-          Process.sleep(100)
         catch
           :exit, _ -> :already_stopping
           :throw, _ -> :already_stopping
         end
+
+        # Wait for shutdown with timeout
+        assert_receive {:DOWN, _ref, :process, ^event_loop_pid, _reason}, 500
       end
 
       # Stop the bus - the bus is a GenServer
@@ -223,18 +227,26 @@ defmodule DesktopUI.Runtime.EventLoopTest do
           window_width: 640,
           window_height: 480,
           event_polling: true,
-          poll_interval: 50,
+          poll_interval: 10,
           name: name
         )
 
-      # Wait a bit for polling messages to be scheduled
-      Process.sleep(100)
+      # Monitor the process to track polling via message queue
+      Process.monitor(pid)
 
-      # Verify process is still alive (polling keeps it running)
+      # Check that process is alive and responding by calling it
+      assert Process.alive?(pid)
+      # Get state to verify polling is active
+      state = :sys.get_state(pid)
+      assert state.event_polling == true
+
+      # Verify process stays alive during polling
       assert Process.alive?(pid)
 
       # Cleanup
       GenServer.stop(name)
+      # Wait for shutdown confirmation
+      assert_receive {:DOWN, _ref, :process, ^pid, _reason}, 500
     end
   end
 
@@ -312,11 +324,14 @@ defmodule DesktopUI.Runtime.EventLoopTest do
     setup :start_event_loop
 
     test "cleans up resources on shutdown", %{event_loop_name: name, event_loop_pid: pid} do
+      # Monitor the process for shutdown confirmation
+      Process.monitor(pid)
+
       # Stop the event loop
       GenServer.stop(name, :normal)
 
-      # Wait for cleanup
-      Process.sleep(100)
+      # Wait for shutdown confirmation with timeout
+      assert_receive {:DOWN, _ref, :process, ^pid, :normal}, 500
 
       # Verify process is stopped
       refute Process.alive?(pid)
@@ -371,13 +386,13 @@ defmodule DesktopUI.Runtime.EventLoopTest do
           event_polling: true
         )
 
-      # Wait for children to start
-      Process.sleep(200)
+      # Monitor runtime for shutdown
+      Process.monitor(runtime_pid)
 
-      # Verify runtime started
+      # Verify runtime started by checking it's alive
       assert Process.alive?(runtime_pid)
 
-      # Check children
+      # Check children - use a small timeout to let children initialize
       children = Supervisor.which_children(runtime_pid)
       child_ids = Enum.map(children, fn {id, _pid, _type, _modules} -> id end)
 
@@ -388,7 +403,8 @@ defmodule DesktopUI.Runtime.EventLoopTest do
 
       # Cleanup
       Supervisor.stop(name, :normal)
-      Process.sleep(100)
+      # Wait for shutdown confirmation
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       # Cleanup bus
       case Process.whereis(bus_name) do
@@ -437,8 +453,8 @@ defmodule DesktopUI.Runtime.EventLoopTest do
           event_polling: false
         )
 
-      # Wait for children to start
-      Process.sleep(200)
+      # Monitor runtime for shutdown
+      Process.monitor(runtime_pid)
 
       # Verify runtime started
       assert Process.alive?(runtime_pid)
@@ -452,8 +468,12 @@ defmodule DesktopUI.Runtime.EventLoopTest do
 
       # Cleanup
       Supervisor.stop(name, :normal)
+
+      # Wait for runtime shutdown before stopping renderer
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
+
+      # Now stop the renderer
       GenServer.stop(renderer_name)
-      Process.sleep(100)
 
       # Cleanup bus
       case Process.whereis(bus_name) do
