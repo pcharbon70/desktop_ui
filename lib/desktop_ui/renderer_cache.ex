@@ -12,6 +12,14 @@ defmodule DesktopUI.RendererCache do
   - The ETS table is created in the GenServer's `init/1` callback
   - The GenServer owns the table, so it's automatically deleted on termination
   - All cache operations go through the GenServer API
+  - Table access is `:private` - only the owning GenServer can access it
+
+  ## Access Control
+
+  The ETS table is private to prevent unauthorized access:
+  - Only the RendererCache GenServer can read/write the table
+  - All access must go through the GenServer API (get_renderer, put_renderer, etc.)
+  - This prevents accidental or malicious modification of renderer cache
 
   ## Hot Reload Safety
 
@@ -23,8 +31,6 @@ defmodule DesktopUI.RendererCache do
 
   use GenServer
   require Logger
-
-  @table_name :desktop_ui_renderers
 
   # ============================================================
   # Client API
@@ -72,12 +78,6 @@ defmodule DesktopUI.RendererCache do
     GenServer.call(__MODULE__, :clear)
   end
 
-  @doc """
-  Get the ETS table name (for direct access when needed).
-  Note: Prefer using the API functions above for safety.
-  """
-  def table_name, do: @table_name
-
   # ============================================================
   # Server Callbacks
   # ============================================================
@@ -85,11 +85,11 @@ defmodule DesktopUI.RendererCache do
   @impl true
   def init(_opts) do
     # Create ETS table - this GenServer is the owner
-    # Using :set for O(1) lookups and :public to allow direct access
-    # when performance is critical
-    table = :ets.new(@table_name, [:named_table, :public, :set])
+    # Using :private for access control - only this process can access the table
+    # This prevents unauthorized direct access to the cache
+    table = :ets.new(:desktop_ui_renderers, [:private, :set])
 
-    Logger.debug("RendererCache: Created ETS table #{inspect(@table_name)}")
+    Logger.debug("RendererCache: Created private ETS table")
 
     {:ok, %{table: table}}
   end
@@ -97,7 +97,7 @@ defmodule DesktopUI.RendererCache do
   @impl true
   def handle_call({:get_renderer, window_id}, _from, state) do
     result =
-      case :ets.lookup(@table_name, window_id) do
+      case :ets.lookup(state.table, window_id) do
         [{^window_id, renderer_id}] -> {:ok, renderer_id}
         [] -> :error
       end
@@ -107,25 +107,25 @@ defmodule DesktopUI.RendererCache do
 
   @impl true
   def handle_call({:put_renderer, window_id, renderer_id}, _from, state) do
-    true = :ets.insert(@table_name, {window_id, renderer_id})
+    true = :ets.insert(state.table, {window_id, renderer_id})
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:delete_renderer, window_id}, _from, state) do
-    result = :ets.delete(@table_name, window_id)
+    result = :ets.delete(state.table, window_id)
     {:reply, result, state}
   end
 
   @impl true
   def handle_call(:list_all, _from, state) do
-    result = :ets.tab2list(@table_name)
+    result = :ets.tab2list(state.table)
     {:reply, result, state}
   end
 
   @impl true
   def handle_call(:clear, _from, state) do
-    true = :ets.delete_all_objects(@table_name)
+    true = :ets.delete_all_objects(state.table)
     {:reply, :ok, state}
   end
 

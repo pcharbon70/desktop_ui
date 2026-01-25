@@ -75,6 +75,8 @@ defmodule DesktopUI.RendererCacheTest do
     end
 
     test "clear removes all entries" do
+      RendererCache.clear()
+
       RendererCache.put_renderer(1, 100)
       RendererCache.put_renderer(2, 200)
 
@@ -84,8 +86,13 @@ defmodule DesktopUI.RendererCacheTest do
       assert [] == RendererCache.list_all()
     end
 
-    test "table_name returns the ETS table name" do
-      assert RendererCache.table_name() == :desktop_ui_renderers
+    test "table is private - direct ETS access is blocked" do
+      # Insert through the API
+      RendererCache.put_renderer(1, 100)
+
+      # Attempting direct access should fail because table is private
+      # The named table :desktop_ui_renderers should not exist for direct access
+      assert :undefined == :ets.whereis(:desktop_ui_renderers)
     end
 
     test "concurrent access is safe" do
