@@ -801,9 +801,7 @@ defmodule DesktopUI.Graphics do
   #     # Cleanup (renderer destroyed automatically)
   #     DesktopUI.Graphics.destroy_window(window_id)
 
-  # Module attributes for renderer cache and named colors
-  @renderer_table :desktop_ui_renderers
-
+  # Module attributes for named colors
   @named_colors %{
     black: {0, 0, 0, 255},
     white: {255, 255, 255, 255},
@@ -970,17 +968,6 @@ defmodule DesktopUI.Graphics do
   # ============================================================================
 
   @doc false
-  # Initialize the renderer cache ETS table
-  defp init_renderer_cache do
-    try do
-      :ets.new(@renderer_table, [:named_table, :public, :set])
-      :ok
-    rescue
-      ArgumentError -> :ok  # Table already exists
-    end
-  end
-
-  @doc false
   # Ensure a renderer exists for the given window, creating one if needed.
   defp ensure_renderer(window_id) do
     case get_renderer_for_window(window_id) do
@@ -1002,33 +989,31 @@ defmodule DesktopUI.Graphics do
   @doc false
   # Get the cached renderer for a window.
   defp get_renderer_for_window(window_id) do
-    case :ets.lookup(@renderer_table, window_id) do
-      [{^window_id, renderer_id}] -> {:ok, renderer_id}
-      [] -> :error
+    case DesktopUI.RendererCache.get_renderer(window_id) do
+      {:ok, renderer_id} -> {:ok, renderer_id}
+      :error -> :error
     end
+  rescue
+    # RendererCache not started - this can happen during early initialization
+    _ -> :error
   end
 
   @doc false
   # Cache the renderer association for a window.
   defp cache_renderer(window_id, renderer_id) do
-    :ets.insert(@renderer_table, {window_id, renderer_id})
-    :ok
+    DesktopUI.RendererCache.put_renderer(window_id, renderer_id)
   end
 
   @doc false
   # Remove the renderer cache for a window and destroy the renderer.
   defp remove_renderer_cache(window_id) do
-    try do
-      case get_renderer_for_window(window_id) do
-        {:ok, renderer_id} ->
-          :ets.delete(@renderer_table, window_id)
-          destroy_renderer(renderer_id)
+    case get_renderer_for_window(window_id) do
+      {:ok, renderer_id} ->
+        DesktopUI.RendererCache.delete_renderer(window_id)
+        destroy_renderer(renderer_id)
 
-        :error ->
-          :ok
-      end
-    rescue
-      ArgumentError -> :ok  # ETS table doesn't exist
+      :error ->
+        :ok
     end
   end
 
@@ -1137,8 +1122,8 @@ defmodule DesktopUI.Graphics do
 
   # Load the NIF library when the module is first loaded
   defp load_nif do
-    # Initialize renderer cache ETS table
-    init_renderer_cache()
+    # Note: RendererCache GenServer handles ETS table creation
+    # It is started as part of the application supervision tree
 
     nif_path = case :code.priv_dir(:desktop_ui) do
       {:error, _} -> "desktop_ui_nif"  # Fallback when app not loaded
