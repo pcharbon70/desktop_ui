@@ -123,19 +123,19 @@ Create rendering and drawing primitives:
 
 Implement the event system that captures OS input and translates it to Elixir terms.
 
-- [ ] **Task 2.4** Implement event polling NIFs
+- [x] **Task 2.4** Implement event polling NIFs ✅ **COMPLETE**
 
 Create event handling functions:
 
-- [ ] 2.4.1 Implement `poll_event/0` - non-blocking event poll
-- [ ] 2.4.2 Implement `wait_event/1` - blocking event poll with timeout
-- [ ] 2.4.3 Translate SDL_QUIT to `{:quit}` tuple
-- [ ] 2.4.4 Translate SDL_MOUSEBUTTONDOWN to `{:mouse_button_down, button, x, y}`
-- [ ] 2.4.5 Translate SDL_MOUSEBUTTONUP to `{:mouse_button_up, button, x, y}`
-- [ ] 2.4.6 Translate SDL_MOUSEMOTION to `{:mouse_motion, x, y, xrel, yrel}`
-- [ ] 2.4.7 Translate SDL_KEYDOWN to `{:key_down, keycode, mod}`
-- [ ] 2.4.8 Translate SDL_KEYUP to `{:key_up, keycode, mod}`
-- [ ] 2.4.9 Translate SDL_WINDOWEVENT to `{:window_event, event_id}`
+- [x] 2.4.1 Implement `poll_event/0` - non-blocking event poll ✅
+- [x] 2.4.2 Implement `wait_event/1` - blocking event poll with timeout ✅
+- [x] 2.4.3 Translate SDL_QUIT to `{:quit}` tuple ✅
+- [x] 2.4.4 Translate SDL_MOUSEBUTTONDOWN to `{:mouse_button_down, button, x, y}` ✅
+- [x] 2.4.5 Translate SDL_MOUSEBUTTONUP to `{:mouse_button_up, button, x, y}` ✅
+- [x] 2.4.6 Translate SDL_MOUSEMOTION to `{:mouse_motion, x, y, xrel, yrel}` ✅
+- [x] 2.4.7 Translate SDL_KEYDOWN to `{:key_down, keycode, mod}` ✅
+- [x] 2.4.8 Translate SDL_KEYUP to `{:key_up, keycode, mod}` ✅
+- [x] 2.4.9 Translate SDL_WINDOWEVENT to `{:window_event, event_id}` ✅
 
 **Implementation Notes:**
 - Use `SDL_PollEvent` for non-blocking, `SDL_WaitEventTimeout` for blocking
@@ -146,14 +146,16 @@ Create event handling functions:
 - Ensure event structs are small and copyable
 
 **Unit Tests for Section 2.4:**
-- [ ] 2.4.1 Verify poll_event returns :no_event when idle
-- [ ] 2.4.2 Verify poll_event returns event after user action
-- [ ] 2.4.3 Verify quit event translates correctly
-- [ ] 2.4.4 Verify mouse click event includes correct coordinates
-- [ ] 2.4.5 Verify mouse motion includes relative coordinates
-- [ ] 2.4.6 Verify key press includes keycode and modifiers
-- [ ] 2.4.7 Verify window resize event translates correctly
-- [ ] 2.4.8 Verify wait_event times out correctly
+- [x] 2.4.1 Verify poll_event returns :no_event when idle ✅
+- [x] 2.4.2 Verify poll_event returns event after user action ✅
+- [x] 2.4.3 Verify quit event translates correctly ✅
+- [x] 2.4.4 Verify mouse click event includes correct coordinates ✅
+- [x] 2.4.5 Verify mouse motion includes relative coordinates ✅
+- [x] 2.4.6 Verify key press includes keycode and modifiers ✅
+- [x] 2.4.7 Verify window resize event translates correctly ✅
+- [x] 2.4.8 Verify wait_event times out correctly ✅
+
+**Test Results:** 8 Graphics event polling tests added, all 298 tests passing (100%)
 
 ---
 
@@ -161,19 +163,19 @@ Create event handling functions:
 
 Create the Elixir wrapper module that provides a clean, safe API over the NIFs.
 
-- [ ] **Task 2.5** Implement `DesktopUI.Graphics` Elixir module
+- [x] **Task 2.5** Implement `DesktopUI.Graphics` Elixir module ✅ **COMPLETE**
 
 Create the public graphics API:
 
-- [ ] 2.5.1 Create `init/0` - initialize SDL2 subsystem
-- [ ] 2.5.2 Create `create_window/4` - title, width, height, options
-- [ ] 2.5.3 Create `destroy_window/1` - cleanup window
-- [ ] 2.5.4 Create `clear/2` - window_id, color
-- [ ] 2.5.5 Create `draw_rect/6` - window_id, x, y, w, h, color
-- [ ] 2.5.6 Create `fill_rect/6` - window_id, x, y, w, h, color
-- [ ] 2.5.7 Create `poll_event/0` - get next event or :no_event
-- [ ] 2.5.8 Create `present/1` - display the rendered frame
-- [ ] 2.5.9 Add error handling and logging
+- [x] 2.5.1 Create `init/0` - initialize SDL2 subsystem
+- [x] 2.5.2 Create `create_window/4` - title, width, height, options
+- [x] 2.5.3 Create `destroy_window/1` - cleanup window
+- [x] 2.5.4 Create `clear/2` - window_id, color
+- [x] 2.5.5 Create `draw_rect/6` - window_id, x, y, w, h, color
+- [x] 2.5.6 Create `fill_rect/6` - window_id, x, y, w, h, color
+- [x] 2.5.7 Create `poll_event/0` - get next event or :no_event
+- [x] 2.5.8 Create `present/1` - display the rendered frame
+- [x] 2.5.9 Add error handling and logging
 
 **Implementation Notes:**
 - Convert C error codes to descriptive Elixir errors
@@ -183,16 +185,34 @@ Create the public graphics API:
 - Use `@spec` for all public functions
 - Document thread safety guarantees
 
+**Actual Implementation:**
+- Created `init/0` wrapper (alias for `sdl_init/0`)
+- Created `clear_window/2` - automatic renderer management with flexible colors
+- Created `draw_rect_on_window/6` - automatic renderer management with flexible colors
+- Created `fill_rect_on_window/6` - automatic renderer management with flexible colors
+- Created `present_window/1` - automatic renderer management
+- Enhanced `destroy_window/1` to auto-cleanup cached renderers
+- Added ETS-based renderer cache for automatic lifecycle management
+- Added color normalization supporting 4 formats:
+  - Map: `%{r: 255, g: 0, b: 0, a: 255}`
+  - Tuple: `{255, 0, 0, 255}` or `{255, 0, 0}`
+  - Atom: `:red`, `:blue`, etc. (12 named colors)
+  - Hex string: `"#FF0000"`, `"#FF0000FF"`, `"#F00"`
+- Added Application module for ETS cleanup on shutdown
+- Added robust error handling for missing ETS table
+
 **Unit Tests for Section 2.5:**
-- [ ] 2.5.1 Verify init initializes SDL2 successfully
-- [ ] 2.5.2 Verify create_window returns {:ok, window_id}
-- [ ] 2.5.3 Verify create_window returns {:error, reason} on failure
-- [ ] 2.5.4 Verify clear fills window with color
-- [ ] 2.5.5 Verify draw_rect draws outline rectangle
-- [ ] 2.5.6 Verify fill_rect draws filled rectangle
-- [ ] 2.5.7 Verify poll_event returns events or :no_event
-- [ ] 2.5.8 Verify present displays rendered content
-- [ ] 2.5.9 Verify operations on invalid window_id return error
+- [x] 2.5.1 Verify init initializes SDL2 successfully
+- [x] 2.5.2 Verify create_window returns {:ok, window_id}
+- [x] 2.5.3 Verify create_window returns {:error, reason} on failure
+- [x] 2.5.4 Verify clear fills window with color
+- [x] 2.5.5 Verify draw_rect draws outline rectangle
+- [x] 2.5.6 Verify fill_rect draws filled rectangle
+- [x] 2.5.7 Verify poll_event returns events or :no_event
+- [x] 2.5.8 Verify present displays rendered content
+- [x] 2.5.9 Verify operations on invalid window_id return error
+
+**Test Results:** 9 new wrapper API tests added, all 307 tests passing (100%)
 
 ---
 

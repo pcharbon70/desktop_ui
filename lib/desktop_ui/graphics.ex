@@ -279,6 +279,9 @@ defmodule DesktopUI.Graphics do
   """
   @spec destroy_window(non_neg_integer()) :: :ok | {:error, String.t()}
   def destroy_window(window_id) when is_integer(window_id) do
+    # Cleanup renderer cache first (auto-destroys renderer)
+    remove_renderer_cache(window_id)
+    # Then destroy the window
     nif_destroy_window(window_id)
   end
 
@@ -759,6 +762,374 @@ defmodule DesktopUI.Graphics do
   end
 
   # ============================================================================
+  # Convenience Wrapper API
+  # ============================================================================
+  #
+  # The following functions provide a more ergonomic API for common operations
+  # by automatically managing renderers and accepting flexible color formats.
+  #
+  # ## Color Formats
+  #
+  # Wrapper functions accept multiple color formats:
+  #
+  # - **Map:** `%{r: 255, g: 0, b: 0, a: 255}`
+  # - **Tuple:** `{255, 0, 0, 255}`
+  # - **Named colors:** `:red`, `:blue`, `:green`, `:yellow`, `:cyan`, `:magenta`,
+  #   `:black`, `:white`, `:gray`, `:dark_gray`, `:light_gray`, `:transparent`
+  # - **Hex string:** `"#FF0000"`, `"#FF0000FF"`, `"#F00"`
+  #
+  # ## Automatic Renderer Management
+  #
+  # Wrapper functions that take `window_id` automatically create and cache a
+  # renderer for that window on first use. The renderer is automatically
+  # destroyed when the window is destroyed.
+  #
+  # ## Examples
+  #
+  # Using the wrapper API with named colors:
+  #
+  #     # Initialize and create a window
+  #     DesktopUI.Graphics.init()
+  #     {:ok, window_id} = DesktopUI.Graphics.create_window("My App", 800, 600)
+  #
+  #     # Draw with automatic renderer management and flexible colors
+  #     DesktopUI.Graphics.clear_window(window_id, :black)
+  #     DesktopUI.Graphics.fill_rect_on_window(window_id, 10, 10, 100, 50, :red)
+  #     DesktopUI.Graphics.draw_rect_on_window(window_id, 120, 10, 100, 50, "#00FF00")
+  #     DesktopUI.Graphics.present_window(window_id)
+  #
+  #     # Cleanup (renderer destroyed automatically)
+  #     DesktopUI.Graphics.destroy_window(window_id)
+
+  # Module attributes for renderer cache and named colors
+  @renderer_table :desktop_ui_renderers
+
+  @named_colors %{
+    black: {0, 0, 0, 255},
+    white: {255, 255, 255, 255},
+    red: {255, 0, 0, 255},
+    green: {0, 255, 0, 255},
+    blue: {0, 0, 255, 255},
+    yellow: {255, 255, 0, 255},
+    cyan: {0, 255, 255, 255},
+    magenta: {255, 0, 255, 255},
+    transparent: {0, 0, 0, 0},
+    gray: {128, 128, 128, 255},
+    dark_gray: {64, 64, 64, 255},
+    light_gray: {192, 192, 192, 255}
+  }
+
+  @doc """
+  Initialize the SDL2 subsystem (convenience alias for `sdl_init/0`).
+
+  This is a simplified name for `sdl_init/0` that makes initialization
+  more discoverable for new users.
+
+  ## Returns
+
+  - `{:ok, %{}}` - SDL2 initialized successfully
+  - `{:error, reason}` - Initialization failed
+
+  ## Examples
+
+      DesktopUI.Graphics.init()
+      {:ok, %{}}
+
+  """
+  @spec init() :: {:ok, map()} | {:error, String.t()}
+  def init, do: sdl_init()
+
+  @doc """
+  Clear a window to a solid color.
+
+  This is a convenience function that automatically creates a renderer for
+  the window if needed, sets the draw color, and clears the window.
+
+  ## Parameters
+
+  - `window_id` - Window ID from `create_window/4`
+  - `color` - Color in any supported format (map, tuple, atom, or hex string)
+
+  ## Returns
+
+  - `:ok` - Window cleared successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      DesktopUI.Graphics.clear_window(window_id, :black)
+      DesktopUI.Graphics.clear_window(window_id, {255, 0, 0, 255})
+      DesktopUI.Graphics.clear_window(window_id, %{r: 0, g: 0, b: 0, a: 255})
+      DesktopUI.Graphics.clear_window(window_id, "#000000")
+
+  """
+  @spec clear_window(non_neg_integer(), term()) :: :ok | {:error, String.t()}
+  def clear_window(window_id, color) do
+    with {:ok, renderer_id} <- ensure_renderer(window_id),
+         {r, g, b, a} <- normalize_color(color),
+         :ok <- set_render_draw_color(renderer_id, r, g, b, a),
+      do: clear_render(renderer_id)
+  end
+
+  @doc """
+  Draw an outline rectangle on a window.
+
+  This is a convenience function that automatically creates a renderer for
+  the window if needed and draws an outline rectangle.
+
+  ## Parameters
+
+  - `window_id` - Window ID from `create_window/4`
+  - `x` - X coordinate of top-left corner
+  - `y` - Y coordinate of top-left corner
+  - `w` - Width of rectangle
+  - `h` - Height of rectangle
+  - `color` - Color in any supported format (map, tuple, atom, or hex string)
+
+  ## Returns
+
+  - `:ok` - Rectangle drawn successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      DesktopUI.Graphics.draw_rect_on_window(window_id, 10, 10, 100, 50, :red)
+      DesktopUI.Graphics.draw_rect_on_window(window_id, 10, 10, 100, 50, "#FF0000")
+
+  """
+  @spec draw_rect_on_window(non_neg_integer(), integer(), integer(), integer(), integer(), term()) ::
+          :ok | {:error, String.t()}
+  def draw_rect_on_window(window_id, x, y, w, h, color) do
+    with {:ok, renderer_id} <- ensure_renderer(window_id),
+         {r, g, b, a} <- normalize_color(color),
+      do: nif_draw_rect(renderer_id, x, y, w, h, {r, g, b, a})
+  end
+
+  @doc """
+  Draw a filled rectangle on a window.
+
+  This is a convenience function that automatically creates a renderer for
+  the window if needed and draws a filled rectangle.
+
+  ## Parameters
+
+  - `window_id` - Window ID from `create_window/4`
+  - `x` - X coordinate of top-left corner
+  - `y` - Y coordinate of top-left corner
+  - `w` - Width of rectangle
+  - `h` - Height of rectangle
+  - `color` - Color in any supported format (map, tuple, atom, or hex string)
+
+  ## Returns
+
+  - `:ok` - Rectangle drawn successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      DesktopUI.Graphics.fill_rect_on_window(window_id, 10, 10, 100, 50, :blue)
+      DesktopUI.Graphics.fill_rect_on_window(window_id, 10, 10, 100, 50, "#0000FF")
+
+  """
+  @spec fill_rect_on_window(non_neg_integer(), integer(), integer(), integer(), integer(), term()) ::
+          :ok | {:error, String.t()}
+  def fill_rect_on_window(window_id, x, y, w, h, color) do
+    with {:ok, renderer_id} <- ensure_renderer(window_id),
+         {r, g, b, a} <- normalize_color(color),
+      do: nif_fill_rect(renderer_id, x, y, w, h, {r, g, b, a})
+  end
+
+  @doc """
+  Present the rendered content to the screen.
+
+  This is a convenience function that automatically creates a renderer for
+  the window if needed and presents the rendered content.
+
+  ## Parameters
+
+  - `window_id` - Window ID from `create_window/4`
+
+  ## Returns
+
+  - `:ok` - Content presented successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      DesktopUI.Graphics.present_window(window_id)
+
+  """
+  @spec present_window(non_neg_integer()) :: :ok | {:error, String.t()}
+  def present_window(window_id) do
+    with {:ok, renderer_id} <- ensure_renderer(window_id),
+      do: present_render(renderer_id)
+  end
+
+  # ============================================================================
+  # Helper Functions
+  # ============================================================================
+
+  @doc false
+  # Initialize the renderer cache ETS table
+  defp init_renderer_cache do
+    try do
+      :ets.new(@renderer_table, [:named_table, :public, :set])
+      :ok
+    rescue
+      ArgumentError -> :ok  # Table already exists
+    end
+  end
+
+  @doc false
+  # Ensure a renderer exists for the given window, creating one if needed.
+  defp ensure_renderer(window_id) do
+    case get_renderer_for_window(window_id) do
+      {:ok, renderer_id} ->
+        {:ok, renderer_id}
+
+      :error ->
+        case create_renderer(window_id) do
+          {:ok, renderer_id} ->
+            cache_renderer(window_id, renderer_id)
+            {:ok, renderer_id}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  @doc false
+  # Get the cached renderer for a window.
+  defp get_renderer_for_window(window_id) do
+    case :ets.lookup(@renderer_table, window_id) do
+      [{^window_id, renderer_id}] -> {:ok, renderer_id}
+      [] -> :error
+    end
+  end
+
+  @doc false
+  # Cache the renderer association for a window.
+  defp cache_renderer(window_id, renderer_id) do
+    :ets.insert(@renderer_table, {window_id, renderer_id})
+    :ok
+  end
+
+  @doc false
+  # Remove the renderer cache for a window and destroy the renderer.
+  defp remove_renderer_cache(window_id) do
+    try do
+      case get_renderer_for_window(window_id) do
+        {:ok, renderer_id} ->
+          :ets.delete(@renderer_table, window_id)
+          destroy_renderer(renderer_id)
+
+        :error ->
+          :ok
+      end
+    rescue
+      ArgumentError -> :ok  # ETS table doesn't exist
+    end
+  end
+
+  @doc false
+  # Normalize color to RGBA tuple {r, g, b, a}.
+  defp normalize_color(color) when is_map(color) do
+    has_keys = Map.has_key?(color, :r) and Map.has_key?(color, :g) and
+               Map.has_key?(color, :b) and Map.has_key?(color, :a)
+
+    with true <- has_keys,
+         r when is_integer(r) and r >= 0 and r <= 255 <- Map.get(color, :r),
+         g when is_integer(g) and g >= 0 and g <= 255 <- Map.get(color, :g),
+         b when is_integer(b) and b >= 0 and b <= 255 <- Map.get(color, :b),
+         a when is_integer(a) and a >= 0 and a <= 255 <- Map.get(color, :a) do
+      {r, g, b, a}
+    else
+      _ -> {:error, "Invalid color map. Expected %{r: 0..255, g: 0..255, b: 0..255, a: 0..255}"}
+    end
+  end
+
+  defp normalize_color(color) when is_tuple(color) do
+    case color do
+      {r, g, b, a}
+        when is_integer(r) and r >= 0 and r <= 255 and
+             is_integer(g) and g >= 0 and g <= 255 and
+             is_integer(b) and b >= 0 and b <= 255 and
+             is_integer(a) and a >= 0 and a <= 255 ->
+        {r, g, b, a}
+
+      {r, g, b}
+        when is_integer(r) and r >= 0 and r <= 255 and
+             is_integer(g) and g >= 0 and g <= 255 and
+             is_integer(b) and b >= 0 and b <= 255 ->
+        {r, g, b, 255}
+
+      _ ->
+        {:error, "Invalid color tuple. Expected {r, g, b, a} or {r, g, b} with values 0-255"}
+    end
+  end
+
+  defp normalize_color(color) when is_atom(color) do
+    case Map.get(@named_colors, color) do
+      nil -> {:error, "Unknown named color: #{color}. Available: #{inspect(Map.keys(@named_colors))}"}
+      rgba -> rgba
+    end
+  end
+
+  defp normalize_color(color) when is_binary(color) do
+    parse_hex_color(color)
+  end
+
+  @doc false
+  # Parse hex color string to RGBA tuple.
+  defp parse_hex_color("#" <> hex) do
+    hex = String.downcase(hex)
+
+    normalized =
+      case String.length(hex) do
+        3 -> parse_3digit_hex(hex)
+        6 -> parse_6digit_hex(hex)
+        8 -> parse_8digit_hex(hex)
+        _ -> {:error, "Invalid hex color format. Expected #RGB, #RRGGBB, or #RRGGBBAA"}
+      end
+
+    case normalized do
+      {:error, _} = error -> error
+      rgba -> rgba
+    end
+  end
+
+  defp parse_hex_color(_), do: {:error, "Invalid hex color format. Expected #RGB, #RRGGBB, or #RRGGBBAA"}
+
+  defp parse_3digit_hex(<<r::utf8, g::utf8, b::utf8>>) do
+    with {r_int, ""} <- Integer.parse(String.duplicate(<<r>>, 2), 16),
+         {g_int, ""} <- Integer.parse(String.duplicate(<<g>>, 2), 16),
+         {b_int, ""} <- Integer.parse(String.duplicate(<<b>>, 2), 16),
+      do: {r_int, g_int, b_int, 255}
+  end
+
+  defp parse_3digit_hex(_), do: {:error, "Invalid 3-digit hex color"}
+
+  defp parse_6digit_hex(<<r1::utf8, r2::utf8, g1::utf8, g2::utf8, b1::utf8, b2::utf8>>) do
+    with {r_int, ""} <- Integer.parse(<<r1, r2>>, 16),
+         {g_int, ""} <- Integer.parse(<<g1, g2>>, 16),
+         {b_int, ""} <- Integer.parse(<<b1, b2>>, 16),
+      do: {r_int, g_int, b_int, 255}
+  end
+
+  defp parse_6digit_hex(_), do: {:error, "Invalid 6-digit hex color"}
+
+  defp parse_8digit_hex(<<r1::utf8, r2::utf8, g1::utf8, g2::utf8, b1::utf8, b2::utf8, a1::utf8, a2::utf8>>) do
+    with {r_int, ""} <- Integer.parse(<<r1, r2>>, 16),
+         {g_int, ""} <- Integer.parse(<<g1, g2>>, 16),
+         {b_int, ""} <- Integer.parse(<<b1, b2>>, 16),
+         {a_int, ""} <- Integer.parse(<<a1, a2>>, 16),
+      do: {r_int, g_int, b_int, a_int}
+  end
+
+  defp parse_8digit_hex(_), do: {:error, "Invalid 8-digit hex color"}
+
+  # ============================================================================
   # NIF Loading
   # ============================================================================
 
@@ -766,6 +1137,9 @@ defmodule DesktopUI.Graphics do
 
   # Load the NIF library when the module is first loaded
   defp load_nif do
+    # Initialize renderer cache ETS table
+    init_renderer_cache()
+
     nif_path = case :code.priv_dir(:desktop_ui) do
       {:error, _} -> "desktop_ui_nif"  # Fallback when app not loaded
       dir -> Path.join(dir, "desktop_ui_nif")

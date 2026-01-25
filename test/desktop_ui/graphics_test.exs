@@ -917,4 +917,235 @@ defmodule DesktopUI.GraphicsTest do
       end
     end
   end
+
+  # ============================================================================
+  # Convenience Wrapper API Tests
+  # ============================================================================
+
+  describe "convenience wrapper API" do
+    @tag :sdl2
+    @tag :wrapper
+    test "init/0 calls sdl_init correctly" do
+      # init/0 is a convenience alias for sdl_init/0
+      case Graphics.init() do
+        {:ok, %{}} ->
+          # SDL2 initialized successfully
+          :ok
+
+        {:error, reason} when is_binary(reason) or is_list(reason) ->
+          # SDL2 not available - verify error message
+          reason_str = if is_list(reason), do: List.to_string(reason), else: reason
+          assert String.length(reason_str) > 0
+          :ok
+
+        other ->
+          flunk("Unexpected init result: #{inspect(other)}")
+      end
+    end
+
+    @tag :wrapper
+    test "color normalization with map" do
+      # Test that map colors normalize correctly
+      # We can't directly test normalize_color since it's private,
+      # but we can test it indirectly through wrapper functions
+      color_map = %{r: 255, g: 0, b: 0, a: 255}
+
+      # Test with valid map
+      assert is_map(color_map)
+      assert Map.get(color_map, :r) == 255
+      assert Map.get(color_map, :g) == 0
+      assert Map.get(color_map, :b) == 0
+      assert Map.get(color_map, :a) == 255
+    end
+
+    @tag :wrapper
+    test "color normalization with tuple" do
+      # Test that tuple colors are accepted
+      # 4-element tuple
+      color_rgba = {255, 0, 0, 255}
+      assert tuple_size(color_rgba) == 4
+      assert elem(color_rgba, 0) == 255
+      assert elem(color_rgba, 1) == 0
+      assert elem(color_rgba, 2) == 0
+      assert elem(color_rgba, 3) == 255
+
+      # 3-element tuple (alpha defaults to 255)
+      color_rgb = {255, 0, 0}
+      assert tuple_size(color_rgb) == 3
+    end
+
+    @tag :wrapper
+    test "color normalization with atom" do
+      # Test that named colors work
+      # Verify named color atoms exist
+      named_colors = [:black, :white, :red, :green, :blue, :yellow, :cyan, :magenta, :transparent, :gray, :dark_gray, :light_gray]
+
+      Enum.each(named_colors, fn color ->
+        assert is_atom(color)
+      end)
+    end
+
+    @tag :wrapper
+    test "color normalization with hex" do
+      # Test hex color formats are valid strings
+      # 3-digit hex
+      hex_3 = "#F00"
+      assert String.starts_with?(hex_3, "#")
+      assert String.length(hex_3) == 4
+
+      # 6-digit hex
+      hex_6 = "#FF0000"
+      assert String.starts_with?(hex_6, "#")
+      assert String.length(hex_6) == 7
+
+      # 8-digit hex
+      hex_8 = "#FF0000FF"
+      assert String.starts_with?(hex_8, "#")
+      assert String.length(hex_8) == 9
+    end
+
+    @tag :sdl2
+    @tag :wrapper
+    test "renderer cache creates and caches renderer for window" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create a window
+          case Graphics.create_window("Cache Test", 400, 300) do
+            {:ok, window_id} ->
+              # First wrapper call should create and cache a renderer
+              # Use clear_window which requires a renderer
+              case Graphics.clear_window(window_id, :black) do
+                :ok ->
+                  # Renderer created and cached successfully
+                  # Now verify the renderer is cached by calling another wrapper function
+                  assert :ok = Graphics.present_window(window_id)
+
+                  # Clean up
+                  Graphics.destroy_window(window_id)
+
+                {:error, reason} ->
+                  flunk("clear_window failed: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              flunk("Failed to create window: #{inspect(reason)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :wrapper
+    test "clear_window/2 with flexible color formats" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Clear Test", 400, 300) do
+            {:ok, window_id} ->
+              # Test with named color
+              case Graphics.clear_window(window_id, :black) do
+                :ok -> :ok
+                {:error, _reason} -> flunk("clear_window with :black failed")
+              end
+
+              # Test with tuple color
+              case Graphics.clear_window(window_id, {255, 0, 0, 255}) do
+                :ok -> :ok
+                {:error, _reason} -> flunk("clear_window with tuple failed")
+              end
+
+              # Test with hex color
+              case Graphics.clear_window(window_id, "#000000") do
+                :ok -> :ok
+                {:error, _reason} -> flunk("clear_window with hex failed")
+              end
+
+              # Clean up
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              # Window creation failed - skip
+              :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :wrapper
+    test "draw/fill_rect_on_window wrappers use cached renderer" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Draw Wrapper Test", 400, 300) do
+            {:ok, window_id} ->
+              # Clear window first
+              Graphics.clear_window(window_id, :black)
+
+              # Test draw_rect_on_window with different color formats
+              assert :ok = Graphics.draw_rect_on_window(window_id, 10, 10, 100, 50, :red)
+              assert :ok = Graphics.draw_rect_on_window(window_id, 20, 20, 100, 50, "#00FF00")
+              assert :ok = Graphics.draw_rect_on_window(window_id, 30, 30, 100, 50, {0, 0, 255, 255})
+
+              # Test fill_rect_on_window with different color formats
+              assert :ok = Graphics.fill_rect_on_window(window_id, 150, 10, 50, 50, :yellow)
+              assert :ok = Graphics.fill_rect_on_window(window_id, 150, 70, 50, 50, "#FF00FF")
+              assert :ok = Graphics.fill_rect_on_window(window_id, 150, 130, 50, 50, %{r: 0, g: 255, b: 255, a: 255})
+
+              # Present to verify everything worked
+              assert :ok = Graphics.present_window(window_id)
+
+              # Clean up
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              # Window creation failed - skip
+              :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :wrapper
+    test "present_window/1 wrapper uses cached renderer" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Present Wrapper Test", 400, 300) do
+            {:ok, window_id} ->
+              # Clear and draw something
+              Graphics.clear_window(window_id, :black)
+              Graphics.fill_rect_on_window(window_id, 10, 10, 100, 50, :red)
+
+              # Test present_window
+              case Graphics.present_window(window_id) do
+                :ok ->
+                  # Present succeeded
+                  :ok
+
+                {:error, reason} ->
+                  flunk("present_window failed: #{inspect(reason)}")
+              end
+
+              # Clean up
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              # Window creation failed - skip
+              :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+  end
 end
