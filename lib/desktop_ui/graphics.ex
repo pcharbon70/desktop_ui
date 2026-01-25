@@ -42,6 +42,12 @@ defmodule DesktopUI.Graphics do
   SDL2 windows. Windows are identified by integer IDs returned from
   `create_window/4`.
 
+  ## Rendering and Drawing
+
+  This module provides rendering and drawing functions for displaying graphics
+  in windows. Each window can have a renderer created with `create_renderer/1`,
+  which can then be used to draw shapes and present the final image to the screen.
+
   ## Examples
 
   Check if the NIF is loaded:
@@ -52,7 +58,7 @@ defmodule DesktopUI.Graphics do
   Get version information:
 
       iex> DesktopUI.Graphics.version()
-      "0.2.0-nif"
+      "0.3.0-nif"
 
   Initialize SDL2 and create a window:
 
@@ -60,6 +66,19 @@ defmodule DesktopUI.Graphics do
       {:ok, %{}}
       iex> DesktopUI.Graphics.create_window("My Window", 800, 600)
       {:ok, 0}
+
+  Create a renderer and draw rectangles:
+
+      iex> {:ok, renderer} = DesktopUI.Graphics.create_renderer(0)
+      {:ok, 0}
+      iex> DesktopUI.Graphics.set_render_draw_color(0, 0, 0, 0, 255)
+      :ok
+      iex> DesktopUI.Graphics.clear_render(0)
+      :ok
+      iex> DesktopUI.Graphics.fill_rect(0, 10, 10, 100, 50, {255, 0, 0, 255})
+      :ok
+      iex> DesktopUI.Graphics.present_render(0)
+      :ok
 
   """
 
@@ -331,6 +350,244 @@ defmodule DesktopUI.Graphics do
   end
 
   # ============================================================================
+  # Renderer and Drawing API
+  # ============================================================================
+
+  @doc """
+  Create a new SDL2 renderer for a window.
+
+  A renderer handles drawing operations for a window. Each window can have
+  at most one renderer. The renderer is created with hardware acceleration
+  and vsync enabled for smooth rendering.
+
+  ## Parameters
+
+  - `window_id` - Window ID returned from `create_window/4`
+
+  ## Returns
+
+  - `{:ok, renderer_id}` - Renderer created successfully
+  - `{:error, reason}` - Renderer creation failed
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.sdl_init()
+      {:ok, %{}}
+      iex> DesktopUI.Graphics.create_window("My Window", 800, 600)
+      {:ok, 0}
+      iex> DesktopUI.Graphics.create_renderer(0)
+      {:ok, 0}
+
+  """
+  @spec create_renderer(non_neg_integer()) :: {:ok, non_neg_integer()} | {:error, String.t()}
+  def create_renderer(window_id) when is_integer(window_id) do
+    nif_create_renderer(window_id)
+  end
+
+  @doc """
+  Destroy an SDL2 renderer and release its resources.
+
+  ## Parameters
+
+  - `renderer_id` - Renderer ID returned from `create_renderer/1`
+
+  ## Returns
+
+  - `:ok` - Renderer destroyed successfully
+  - `{:error, reason}` - Renderer destruction failed
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.destroy_renderer(0)
+      :ok
+
+  """
+  @spec destroy_renderer(non_neg_integer()) :: :ok | {:error, String.t()}
+  def destroy_renderer(renderer_id) when is_integer(renderer_id) do
+    nif_destroy_renderer(renderer_id)
+  end
+
+  @doc """
+  Set the draw color for a renderer.
+
+  This sets the color that will be used for drawing operations like
+  `clear_render/1`, `draw_rect/6`, and `fill_rect/6`. Each component
+  should be a value between 0 and 255.
+
+  ## Parameters
+
+  - `renderer_id` - Renderer ID returned from `create_renderer/1`
+  - `r` - Red component (0-255)
+  - `g` - Green component (0-255)
+  - `b` - Blue component (0-255)
+  - `a` - Alpha component (0-255, 255 = fully opaque)
+
+  ## Returns
+
+  - `:ok` - Draw color set successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.set_render_draw_color(0, 255, 0, 0, 255)
+      :ok
+
+  """
+  @spec set_render_draw_color(non_neg_integer(), 0..255, 0..255, 0..255, 0..255) ::
+          :ok | {:error, String.t()}
+  def set_render_draw_color(renderer_id, r, g, b, a)
+      when is_integer(renderer_id) and is_integer(r) and is_integer(g) and is_integer(b) and
+             is_integer(a) do
+    nif_set_render_draw_color(renderer_id, r, g, b, a)
+  end
+
+  @doc """
+  Clear the renderer target with the current draw color.
+
+  This fills the entire render target with the color set by
+  `set_render_draw_color/5`.
+
+  ## Parameters
+
+  - `renderer_id` - Renderer ID returned from `create_renderer/1`
+
+  ## Returns
+
+  - `:ok` - Renderer cleared successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.set_render_draw_color(0, 0, 0, 0, 255)
+      :ok
+      iex> DesktopUI.Graphics.clear_render(0)
+      :ok
+
+  """
+  @spec clear_render(non_neg_integer()) :: :ok | {:error, String.t()}
+  def clear_render(renderer_id) when is_integer(renderer_id) do
+    nif_clear_render(renderer_id)
+  end
+
+  @doc """
+  Draw an outline rectangle.
+
+  Draws the outline of a rectangle at the specified position with the
+  specified color. The color is specified as a tuple `{r, g, b, a}` where
+  each component is a value between 0 and 255.
+
+  This function temporarily changes the draw color for this operation only,
+  then restores the previous color.
+
+  ## Parameters
+
+  - `renderer_id` - Renderer ID returned from `create_renderer/1`
+  - `x` - X position in pixels
+  - `y` - Y position in pixels
+  - `w` - Width in pixels
+  - `h` - Height in pixels
+  - `color` - Color tuple `{r, g, b, a}` where each component is 0-255
+
+  ## Returns
+
+  - `:ok` - Rectangle drawn successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.draw_rect(0, 10, 10, 100, 50, {255, 0, 0, 255})
+      :ok
+
+  """
+  @spec draw_rect(non_neg_integer(), integer(), integer(), integer(), integer(), {0..255, 0..255, 0..255, 0..255}) ::
+          :ok | {:error, String.t()}
+  def draw_rect(renderer_id, x, y, w, h, color)
+      when is_integer(renderer_id) and is_integer(x) and is_integer(y) and is_integer(w) and
+             is_integer(h) and is_tuple(color) do
+    nif_draw_rect(renderer_id, x, y, w, h, color)
+  end
+
+  @doc """
+  Draw a filled rectangle.
+
+  Draws a filled rectangle at the specified position with the specified color.
+  The color is specified as a tuple `{r, g, b, a}` where each component is a
+  value between 0 and 255.
+
+  This function temporarily changes the draw color for this operation only,
+  then restores the previous color.
+
+  ## Parameters
+
+  - `renderer_id` - Renderer ID returned from `create_renderer/1`
+  - `x` - X position in pixels
+  - `y` - Y position in pixels
+  - `w` - Width in pixels
+  - `h` - Height in pixels
+  - `color` - Color tuple `{r, g, b, a}` where each component is 0-255
+
+  ## Returns
+
+  - `:ok` - Rectangle drawn successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.fill_rect(0, 10, 10, 100, 50, {0, 255, 0, 255})
+      :ok
+
+  """
+  @spec fill_rect(non_neg_integer(), integer(), integer(), integer(), integer(), {0..255, 0..255, 0..255, 0..255}) ::
+          :ok | {:error, String.t()}
+  def fill_rect(renderer_id, x, y, w, h, color)
+      when is_integer(renderer_id) and is_integer(x) and is_integer(y) and is_integer(w) and
+             is_integer(h) and is_tuple(color) do
+    nif_fill_rect(renderer_id, x, y, w, h, color)
+  end
+
+  @doc """
+  Present the rendered content to the screen.
+
+  This swaps the buffers to display what has been rendered since the last
+  call to `present_render/1`. You must call this function after drawing
+  operations to make them visible on screen.
+
+  ## Parameters
+
+  - `renderer_id` - Renderer ID returned from `create_renderer/1`
+
+  ## Returns
+
+  - `:ok` - Content presented successfully
+  - `{:error, reason}` - Operation failed
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.present_render(0)
+      :ok
+
+  ## Typical Rendering Loop
+
+      # Clear screen with black
+      DesktopUI.Graphics.set_render_draw_color(0, 0, 0, 0, 255)
+      DesktopUI.Graphics.clear_render(0)
+
+      # Draw a red rectangle
+      DesktopUI.Graphics.fill_rect(0, 10, 10, 100, 50, {255, 0, 0, 255})
+
+      # Draw a blue outline rectangle
+      DesktopUI.Graphics.draw_rect(0, 20, 20, 80, 30, {0, 0, 255, 255})
+
+      # Present to screen
+      DesktopUI.Graphics.present_render(0)
+
+  """
+  @spec present_render(non_neg_integer()) :: :ok | {:error, String.t()}
+  def present_render(renderer_id) when is_integer(renderer_id) do
+    nif_present_render(renderer_id)
+  end
+
+  # ============================================================================
   # NIF Loading
   # ============================================================================
 
@@ -396,7 +653,7 @@ defmodule DesktopUI.Graphics do
   end
 
   defp nif_get_version do
-    "0.2.0-fallback"
+    "0.3.0-fallback"
   end
 
   defp nif_get_error do
@@ -429,6 +686,35 @@ defmodule DesktopUI.Graphics do
   end
 
   defp nif_set_window_title(_window_id, _title) do
+    error_not_loaded()
+  end
+
+  # Renderer and drawing NIF stubs
+  defp nif_create_renderer(_window_id) do
+    error_not_loaded()
+  end
+
+  defp nif_destroy_renderer(_renderer_id) do
+    error_not_loaded()
+  end
+
+  defp nif_set_render_draw_color(_renderer_id, _r, _g, _b, _a) do
+    error_not_loaded()
+  end
+
+  defp nif_clear_render(_renderer_id) do
+    error_not_loaded()
+  end
+
+  defp nif_draw_rect(_renderer_id, _x, _y, _w, _h, _color) do
+    error_not_loaded()
+  end
+
+  defp nif_fill_rect(_renderer_id, _x, _y, _w, _h, _color) do
+    error_not_loaded()
+  end
+
+  defp nif_present_render(_renderer_id) do
     error_not_loaded()
   end
 

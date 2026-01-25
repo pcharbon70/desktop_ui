@@ -84,18 +84,18 @@ Create window creation and management functions:
 
 Implement the core drawing functions for rendering shapes to the window.
 
-- [ ] **Task 2.3** Implement basic drawing NIFs
+- [x] **Task 2.3** Implement basic drawing NIFs ✅
 
 Create rendering and drawing primitives:
 
-- [ ] 2.3.1 Implement `create_renderer/1` - create SDL2 renderer for window
-- [ ] 2.3.2 Implement `destroy_renderer/1` - cleanup renderer resources
-- [ ] 2.3.3 Implement `set_render_draw_color/5` - set RGBA color
-- [ ] 2.3.4 Implement `clear_render/1` - fill with current draw color
-- [ ] 2.3.5 Implement `draw_rect/6` - outline rectangle (x, y, w, h, window_id, color)
-- [ ] 2.3.6 Implement `fill_rect/6` - filled rectangle
-- [ ] 2.3.7 Implement `present_render/1` - swap buffers (display frame)
-- [ ] 2.3.8 Add renderer resource tracking
+- [x] 2.3.1 Implement `create_renderer/1` - create SDL2 renderer for window ✅
+- [x] 2.3.2 Implement `destroy_renderer/1` - cleanup renderer resources ✅
+- [x] 2.3.3 Implement `set_render_draw_color/5` - set RGBA color ✅
+- [x] 2.3.4 Implement `clear_render/1` - fill with current draw color ✅
+- [x] 2.3.5 Implement `draw_rect/6` - outline rectangle (x, y, w, h, color) ✅
+- [x] 2.3.6 Implement `fill_rect/6` - filled rectangle ✅
+- [x] 2.3.7 Implement `present_render/1` - swap buffers (display frame) ✅
+- [x] 2.3.8 Add renderer resource tracking ✅
 
 **Implementation Notes:**
 - Use SDL_RENDERER_ACCELERATED flag for hardware acceleration
@@ -106,14 +106,16 @@ Create rendering and drawing primitives:
 - Include bounds checking for coordinates
 
 **Unit Tests for Section 2.3:**
-- [ ] 2.3.1 Verify renderer creates for valid window
-- [ ] 2.3.2 Verify renderer destroys cleanly
-- [ ] 2.3.3 Verify set_render_draw_color sets color
-- [ ] 2.3.4 Verify clear_render fills window with color
-- [ ] 2.3.5 Verify draw_rect draws outline
-- [ ] 2.3.6 Verify fill_rect draws filled rectangle
-- [ ] 2.3.7 Verify present_render displays content
-- [ ] 2.3.8 Verify drawing with invalid resource returns error
+- [x] 2.3.1 Verify renderer creates for valid window ✅
+- [x] 2.3.2 Verify renderer destroys cleanly ✅
+- [x] 2.3.3 Verify set_render_draw_color sets color ✅
+- [x] 2.3.4 Verify clear_render fills window with color ✅
+- [x] 2.3.5 Verify draw_rect draws outline ✅
+- [x] 2.3.6 Verify fill_rect draws filled rectangle ✅
+- [x] 2.3.7 Verify present_render displays content ✅
+- [x] 2.3.8 Verify drawing with invalid resource returns error ✅
+
+**Test Results:** 10 Graphics renderer/drawing tests added, all 290 tests passing (100%)
 
 ---
 
