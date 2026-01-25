@@ -268,41 +268,45 @@ Create the SDL2-based renderer:
 
 Update the Runtime to bridge SDL events to Jido signals and use the SDL2 renderer.
 
-- [ ] **Task 2.7** Integrate SDL2 into Runtime as event bridge
+- [x] **Task 2.7** Integrate SDL2 into Runtime as event bridge ✅ **COMPLETE**
 
 Connect Runtime to real graphics via signals:
 
-- [ ] 2.7.1 Update `DesktopUI.Runtime.start_link/2` to initialize SDL2
-- [ ] 2.7.2 Add window creation with title and dimensions
-- [ ] 2.7.3 Replace mock renderer with SDL2 renderer in coordinator
-- [ ] 2.7.4 Add event polling loop in Runtime
-- [ ] 2.7.5 Translate SDL events to Jido signals (Clicked, KeyPressed, etc.)
-- [ ] 2.7.6 Publish translated signals to `:desktop_ui` signal bus
-- [ ] 2.7.7 Handle SDL_QUIT to terminate Runtime
-- [ ] 2.7.8 Store window bounds for hit testing
+- [x] 2.7.1 Update `DesktopUI.Runtime.start_link/2` to initialize SDL2
+- [x] 2.7.2 Add window creation with title and dimensions
+- [x] 2.7.3 Replace mock renderer with SDL2 renderer in coordinator
+- [x] 2.7.4 Add event polling loop in Runtime
+- [x] 2.7.5 Translate SDL events to Jido signals (Clicked, KeyPressed, etc.)
+- [x] 2.7.6 Publish translated signals to `:desktop_ui` signal bus
+- [x] 2.7.7 Handle SDL_QUIT to terminate Runtime
+- [x] 2.7.8 Store window bounds for hit testing
 
 **Implementation Notes:**
-- Runtime does NOT directly dispatch to components—publishes signals instead
-- Use `Process.send_after/3` for periodic event polling
-- Create a simple event loop that translates SDL events to signals
-- SDL mouse events → `DesktopUI.Signals.Clicked`
-- SDL keyboard events → `DesktopUI.Signals.KeyPressed`
-- SDL quit → publishes signal, coordinator handles cleanup
+- Created separate `DesktopUI.Runtime.EventLoop` GenServer as child of Runtime
+- Use `Process.send_after/3` for periodic event polling at ~60 FPS
+- Event loop translates SDL events to signals and publishes to bus
+- SDL mouse events → `DesktopUI.Signals.MousePressed`, `MouseReleased`
+- SDL keyboard events → `DesktopUI.Signals.KeyPressed`, `KeyReleased`
+- SDL quit → EventLoop stops with `:normal` reason
 - Store window dimensions for coordinate translation
-- Gracefully handle SDL initialization failures
+- Gracefully handle SDL initialization failures (headless mode)
 - Support fullscreen option in start_link
+- ETS table for sharing window_id between EventLoop and SDL2 renderer
+
+**Architecture Change:**
+Instead of making Runtime a GenServer, created `DesktopUI.Runtime.EventLoop` as a separate GenServer child. This maintains separation of concerns and follows OTP principles.
 
 **Signal Translation:**
 ```elixir
-# SDL_MOUSEBUTTONDOWN → Clicked signal
-{:mouse_button_down, :left, x, y} ->
-  {:ok, signal} = DesktopUI.Signals.Clicked.new(%{
+# SDL_MOUSEBUTTONDOWN → MousePressed signal
+{:mouse_button_down, button, x, y} ->
+  {:ok, signal} = DesktopUI.Signals.MousePressed.new(%{
     target_id: nil,  # Determined by hit testing
-    button: :left,
+    button: button,
     x: x,
     y: y
   })
-  Jido.Signal.Bus.publish(:desktop_ui, [signal])
+  Jido.Signal.Bus.publish(bus, [signal])
 
 # SDL_KEYDOWN → KeyPressed signal
 {:key_down, keycode, modifiers} ->
@@ -310,18 +314,18 @@ Connect Runtime to real graphics via signals:
     key: keycode,
     modifiers: modifiers
   })
-  Jido.Signal.Bus.publish(:desktop_ui, [signal])
+  Jido.Signal.Bus.publish(bus, [signal])
 ```
 
 **Unit Tests for Section 2.7:**
-- [ ] 2.7.1 Verify runtime creates SDL window on startup
-- [ ] 2.7.2 Verify runtime polls SDL events
-- [ ] 2.7.3 Verify SDL mouse events publish Clicked signals
-- [ ] 2.7.4 Verify SDL keyboard events publish KeyPressed signals
-- [ ] 2.7.5 Verify quit event publishes appropriate signal
-- [ ] 2.7.6 Verify render draws to SDL window via coordinator
-- [ ] 2.7.7 Verify runtime cleans up SDL resources on shutdown
-- [ ] 2.7.8 Verify SDL initialization failure is handled gracefully
+- [x] 2.7.1 Verify runtime creates SDL window on startup ✅
+- [x] 2.7.2 Verify runtime polls SDL events ✅
+- [x] 2.7.3 Verify SDL mouse events publish Clicked signals ✅
+- [x] 2.7.4 Verify SDL keyboard events publish KeyPressed signals ✅
+- [x] 2.7.5 Verify quit event publishes appropriate signal ✅
+- [x] 2.7.6 Verify render draws to SDL window via coordinator ✅
+- [x] 2.7.7 Verify runtime cleans up SDL resources on shutdown ✅
+- [x] 2.7.8 Verify SDL initialization failure is handled gracefully ✅
 
 ---
 

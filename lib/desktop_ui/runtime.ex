@@ -73,6 +73,12 @@ defmodule DesktopUI.Runtime do
           | {:renderer, atom() | {atom(), atom()}}
           | {:bus, atom()}
           | {:name, atom()}
+          | {:window_title, String.t()}
+          | {:window_width, pos_integer()}
+          | {:window_height, pos_integer()}
+          | {:fullscreen, boolean()}
+          | {:event_polling, boolean()}
+          | {:poll_interval, pos_integer()}
 
   # Client API
 
@@ -83,16 +89,31 @@ defmodule DesktopUI.Runtime do
 
   * `:root_component` - The root component module (must implement DesktopUI.Elm) (required)
   * `:root_component_opts` - Options to pass to root component's init/1 (default: [])
-  * `:renderer` - Renderer module or {module, name} tuple (default: DesktopUI.Renderer.Mock)
+  * `:renderer` - Renderer module or {module, name} tuple (default: DesktopUI.Renderer.SDL2)
   * `:bus` - Signal bus name (default: :desktop_ui)
   * `:name` - Runtime process name (optional)
+  * `:window_title` - SDL2 window title (default: "DesktopUI App")
+  * `:window_width` - SDL2 window width (default: 800)
+  * `:window_height` - SDL2 window height (default: 600)
+  * `:fullscreen` - SDL2 fullscreen mode (default: false)
+  * `:event_polling` - Enable SDL2 event polling (default: true)
+  * `:poll_interval` - Event poll interval in ms (default: 16, ~60 FPS)
 
   ## Examples
 
+      # With SDL2 graphics (default)
+      {:ok, pid} = DesktopUI.Runtime.start_link(
+        root_component: MyCounterComponent,
+        window_title: "My App",
+        window_width: 800,
+        window_height: 600
+      )
+
+      # With mock renderer (for testing)
       {:ok, pid} = DesktopUI.Runtime.start_link(
         root_component: MyCounterComponent,
         renderer: DesktopUI.Renderer.Mock,
-        bus: :desktop_ui
+        event_polling: false
       )
 
   """
@@ -223,24 +244,66 @@ defmodule DesktopUI.Runtime do
     # Extract options
     root_component = Keyword.fetch!(opts, :root_component)
     root_component_opts = Keyword.get(opts, :root_component_opts, [])
-    renderer = Keyword.get(opts, :renderer, DesktopUI.Renderer.Mock)
+    renderer = Keyword.get(opts, :renderer, DesktopUI.Renderer.SDL2)
     bus = Keyword.get(opts, :bus, :desktop_ui)
 
+    # SDL2 options for EventLoop
+    window_title = Keyword.get(opts, :window_title, "DesktopUI App")
+    window_width = Keyword.get(opts, :window_width, 800)
+    window_height = Keyword.get(opts, :window_height, 600)
+    fullscreen = Keyword.get(opts, :fullscreen, false)
+    event_polling = Keyword.get(opts, :event_polling, true)
+    poll_interval = Keyword.get(opts, :poll_interval, 16)
+
+    # Determine if we should use SDL2 (unless explicitly overridden to Mock)
+    use_sdl2 = renderer != DesktopUI.Renderer.Mock
+
     # Define children in supervision order
-    children = [
-      # Signal bus must start first
-      {Jido.Signal.Bus, [name: bus]},
-      # RenderingCoordinator depends on signal bus
-      {DesktopUI.RenderingCoordinator,
-       [renderer: renderer, bus: bus, name: :rendering_coordinator]},
-      # Root component starts last
-      {Jido.Agent.Server,
-       [
-         agent: root_component,
-         opts: root_component_opts,
-         name: :root_component
-       ]}
-    ]
+    children =
+      [
+        # Signal bus must start first
+        {Jido.Signal.Bus, [name: bus]},
+        # EventLoop for SDL2 integration (optional, depends on renderer)
+        # Only start EventLoop if we're using SDL2 renderer
+        # TODO: We need to get window_id from EventLoop to pass to SDL2 renderer
+        # For now, skip EventLoop and add it as a separate concern
+        # RenderingCoordinator depends on signal bus
+        {DesktopUI.RenderingCoordinator,
+         [
+           renderer: renderer,
+           bus: bus,
+           name: :rendering_coordinator
+         ]},
+        # Root component starts last
+        {Jido.Agent.Server,
+         [
+           agent: root_component,
+           opts: root_component_opts,
+           name: :root_component
+         ]}
+      ]
+
+    # Add EventLoop child if using SDL2
+    children =
+      if use_sdl2 and event_polling do
+        [
+          {DesktopUI.Runtime.EventLoop,
+           [
+             bus: bus,
+             window_title: window_title,
+             window_width: window_width,
+             window_height: window_height,
+             fullscreen: fullscreen,
+             event_polling: event_polling,
+             poll_interval: poll_interval,
+             renderer: renderer,
+             name: :event_loop
+           ]}
+          | children
+        ]
+      else
+        children
+      end
 
     # After children start, register root component with coordinator
     # We'll do this via a Registry or by having the component register itself
