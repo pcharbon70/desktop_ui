@@ -26,18 +26,21 @@ defmodule DesktopUI.Phase1IntegrationTest do
         bus: :desktop_ui
       )
 
-    # Wait for children to start
-    Process.sleep(200)
+    # Verify runtime started immediately
+    Process.monitor(runtime_pid)
+    assert Process.alive?(runtime_pid)
 
     on_exit(fn ->
       # Cleanup processes
       if Process.whereis(runtime_name) do
         try do
           Supervisor.stop(runtime_name, :normal)
-          Process.sleep(50)
+          # Wait for shutdown confirmation with timeout
+          assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
         catch
           :exit, _ -> :already_stopping
           :throw, _ -> :already_stopping
+          _ -> :timeout_acceptable
         end
       end
 
@@ -88,7 +91,9 @@ defmodule DesktopUI.Phase1IntegrationTest do
         bus: :desktop_ui
       )
 
-    Process.sleep(50)
+    # Verify registration was processed
+    components = DesktopUI.RenderingCoordinator.get_components(self())
+    assert Map.has_key?(components, component_id)
   end
 
   describe "1.9.1 full lifecycle: init -> signal -> update -> state_change -> render" do
@@ -314,7 +319,8 @@ defmodule DesktopUI.Phase1IntegrationTest do
       # Trigger state change - this should cause a render
       {:ok, _agent} = Elm.handle_ui_signal(agent, :increment)
 
-      Process.sleep(100)
+      # Wait for render to be processed via signal
+      assert_receive {:signal, %Jido.Signal{type: "desktop_ui.state.changed"}}, 500
 
       # Check that a render was triggered
       renders = Mock.get_renders(renderer_name)
@@ -573,15 +579,14 @@ defmodule DesktopUI.Phase1IntegrationTest do
           bus: :desktop_ui
         )
 
-      Process.sleep(200)
-
-      # Verify started
+      # Monitor and verify started immediately
+      Process.monitor(runtime_pid)
       assert Process.whereis(runtime_name) != nil
       assert Process.alive?(runtime_pid)
 
-      # Stop runtime
+      # Stop runtime with shutdown confirmation
       Supervisor.stop(runtime_name, :normal)
-      Process.sleep(100)
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       # Verify runtime stopped
       refute Process.alive?(runtime_pid)
@@ -607,15 +612,17 @@ defmodule DesktopUI.Phase1IntegrationTest do
           bus: :desktop_ui
         )
 
-      Process.sleep(200)
+      # Monitor and verify started immediately
+      Process.monitor(runtime_pid)
+      assert Process.alive?(runtime_pid)
 
       # Get root component PID
       root_pid = Runtime.get_root_component(runtime_name)
       assert Process.alive?(root_pid)
 
-      # Stop runtime
+      # Stop runtime with shutdown confirmation
       Supervisor.stop(runtime_name, :normal)
-      Process.sleep(100)
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       # Verify children stopped
       refute Process.alive?(runtime_pid)
@@ -829,14 +836,12 @@ defmodule DesktopUI.Phase1IntegrationTest do
     end
   end
 
-  # Helper to flush mailbox
+  # Helper to flush mailbox without arbitrary sleep
   defp flush_mailbox do
-    Process.sleep(50)
-
     receive do
       _ -> flush_mailbox()
     after
-      50 -> :ok
+      0 -> :ok
     end
   end
 end

@@ -45,6 +45,26 @@ defmodule DesktopUI.Integration.Phase2Test do
     :ok
   end
 
+  # Helper to wait for root component with bounded retry
+  defp wait_for_root_component(runtime_name, max_retries, retry_delay) do
+    wait_for_root_component(runtime_name, max_retries, retry_delay, 0)
+  end
+
+  defp wait_for_root_component(_runtime_name, max_retries, _retry_delay, attempt) when attempt >= max_retries do
+    nil
+  end
+
+  defp wait_for_root_component(runtime_name, max_retries, retry_delay, attempt) do
+    case Runtime.get_root_component(runtime_name) do
+      nil ->
+        Process.sleep(retry_delay)
+        wait_for_root_component(runtime_name, max_retries, retry_delay, attempt + 1)
+
+      pid when is_pid(pid) ->
+        pid
+    end
+  end
+
   describe "SDL2 lifecycle" do
     # Note: Tests in this describe block require SDL2 to run
     # If SDL2 is not available, these tests will fail with "SDL2 not available at compile time" errors
@@ -535,14 +555,17 @@ defmodule DesktopUI.Integration.Phase2Test do
           name: name
         )
 
-      # Wait for some polling cycles
-      Process.sleep(200)
+      # Monitor and verify polling is active by checking state
+      Process.monitor(pid)
+      state = :sys.get_state(pid)
+      assert state.event_polling == true
 
       # Should still be alive
       assert Process.alive?(pid)
 
-      # Stop
+      # Stop with shutdown confirmation
       GenServer.stop(name)
+      assert_receive {:DOWN, _ref, :process, ^pid, _reason}, 500
 
       case Process.whereis(bus_name) do
         nil -> :ok
@@ -603,10 +626,8 @@ defmodule DesktopUI.Integration.Phase2Test do
           event_polling: false
         )
 
-      # Wait for initialization
-      Process.sleep(300)
-
-      # Verify runtime started
+      # Monitor runtime and verify it's running immediately
+      Process.monitor(runtime_pid)
       assert Process.alive?(runtime_pid)
 
       # Check children
@@ -616,9 +637,9 @@ defmodule DesktopUI.Integration.Phase2Test do
       # Should have EventLoop, RenderingCoordinator, and root component
       assert :event_loop in child_ids or Process.alive?(runtime_pid)
 
-      # Stop
+      # Stop with shutdown confirmation
       Supervisor.stop(name, :normal)
-      Process.sleep(100)
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       case Process.whereis(bus_name) do
         nil -> :ok
@@ -648,14 +669,12 @@ defmodule DesktopUI.Integration.Phase2Test do
           event_polling: false
         )
 
-      # Wait for initialization and first render
-      Process.sleep(300)
-
-      # Verify runtime started
+      # Monitor runtime and verify it's running immediately
+      Process.monitor(runtime_pid)
       assert Process.alive?(runtime_pid)
 
-      # Get the component and verify its state
-      root_pid = Runtime.get_root_component(name)
+      # Wait for root component to be available with bounded retry
+      root_pid = wait_for_root_component(name, 10, 50)
 
       if root_pid do
         {:ok, server_state} = Jido.Agent.Server.state(root_pid)
@@ -669,9 +688,9 @@ defmodule DesktopUI.Integration.Phase2Test do
         assert elm_state.count == 0
       end
 
-      # Stop
+      # Stop with shutdown confirmation
       Supervisor.stop(name, :normal)
-      Process.sleep(100)
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       case Process.whereis(bus_name) do
         nil -> :ok
@@ -725,11 +744,13 @@ defmodule DesktopUI.Integration.Phase2Test do
           event_polling: false
         )
 
-      # Wait for initialization
-      Process.sleep(300)
+      # Monitor runtime and verify it's running immediately
+      Process.monitor(runtime_pid)
+      assert Process.alive?(runtime_pid)
 
-      # Get root component
-      root_pid = Runtime.get_root_component(name)
+      # Wait for root component to be available with bounded retry
+      root_pid =
+        wait_for_root_component(name, 10, 50)
 
       if root_pid do
         # Subscribe to state change signals
@@ -752,9 +773,9 @@ defmodule DesktopUI.Integration.Phase2Test do
         assert_receive {:signal, %Jido.Signal{type: "desktop_ui.state.changed"}}, 1000
       end
 
-      # Stop
+      # Stop with shutdown confirmation
       Supervisor.stop(name, :normal)
-      Process.sleep(100)
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       case Process.whereis(bus_name) do
         nil -> :ok
@@ -831,14 +852,13 @@ defmodule DesktopUI.Integration.Phase2Test do
           event_polling: false
         )
 
-      # Wait for initialization
-      Process.sleep(300)
+      # Monitor runtime and verify it's running immediately
+      Process.monitor(runtime_pid)
+      assert Process.alive?(runtime_pid)
 
-      # Stop runtime
+      # Stop runtime with shutdown confirmation
       Supervisor.stop(name, :normal)
-
-      # Wait for cleanup
-      Process.sleep(200)
+      assert_receive {:DOWN, _ref, :process, ^runtime_pid, _reason}, 500
 
       # Verify runtime stopped
       refute Process.alive?(runtime_pid)

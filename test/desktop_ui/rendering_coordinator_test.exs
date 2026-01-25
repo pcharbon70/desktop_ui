@@ -363,9 +363,6 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       first_components = RenderingCoordinator.get_components(pid)
       first_registered_at = first_components["test_component"].registered_at
 
-      # Wait a bit to ensure different timestamp
-      Process.sleep(10)
-
       {:ok, _signal} =
         RenderingCoordinator.register_component(
           pid,
@@ -374,11 +371,12 @@ defmodule DesktopUI.RenderingCoordinatorTest do
           bus: :test_register_twice_bus
         )
 
-      # Wait for second registration to be processed
+      # Wait for second registration to be processed AND timestamp to be updated
       assert wait_for_condition(fn ->
                components = RenderingCoordinator.get_components(pid)
-               components["test_component"].module == TestComponentWithContainer
-             end)
+               components["test_component"].module == TestComponentWithContainer and
+                 DateTime.compare(components["test_component"].registered_at, first_registered_at) != :eq
+             end, 20, 20)
 
       second_components = RenderingCoordinator.get_components(pid)
       assert second_components["test_component"].module == TestComponentWithContainer

@@ -108,10 +108,7 @@ defmodule DesktopUI.Renderer.MockTest do
       widget = Widget.label("Test")
 
       Mock.render("component_1", widget, name)
-      # Ensure different timestamps
-      Process.sleep(10)
       Mock.render("component_2", widget, name)
-      Process.sleep(10)
       Mock.render("component_3", widget, name)
 
       renders = Mock.get_renders(name)
@@ -120,6 +117,11 @@ defmodule DesktopUI.Renderer.MockTest do
       assert Enum.at(renders, 0).component_id == "component_1"
       assert Enum.at(renders, 1).component_id == "component_2"
       assert Enum.at(renders, 2).component_id == "component_3"
+
+      # Verify chronological order via timestamps (or sequence if timestamps are same)
+      timestamps = Enum.map(renders, & &1.timestamp)
+      # All timestamps should be in non-decreasing order
+      assert timestamps == Enum.sort(timestamps, DateTime)
     end
 
     test "includes widget in render history", %{renderer_name: name} do
@@ -151,9 +153,7 @@ defmodule DesktopUI.Renderer.MockTest do
       widget = Widget.label("Test")
 
       Mock.render("first", widget, name)
-      Process.sleep(10)
       Mock.render("second", widget, name)
-      Process.sleep(10)
       Mock.render("third", widget, name)
 
       last = Mock.get_last_render(name)
@@ -449,7 +449,9 @@ defmodule DesktopUI.Renderer.MockTest do
           name: :test_mock_coordinator
         )
 
-      Process.sleep(100)
+      # Verify coordinator started
+      Process.monitor(coord_pid)
+      assert Process.alive?(coord_pid)
 
       # Register a test component
       defmodule TestComponentForMock do
@@ -475,7 +477,9 @@ defmodule DesktopUI.Renderer.MockTest do
           name: :test_component_for_mock_agent
         )
 
-      Process.sleep(50)
+      # Verify component started
+      Process.monitor(component_pid)
+      assert Process.alive?(component_pid)
 
       {:ok, _signal} =
         DesktopUI.RenderingCoordinator.register_component(
@@ -486,7 +490,14 @@ defmodule DesktopUI.Renderer.MockTest do
           bus: :test_mock_bus
         )
 
-      Process.sleep(100)
+      # Subscribe to verify signal flow
+      test_pid = self()
+      {:ok, _sub} =
+        Jido.Signal.Bus.subscribe(
+          :test_mock_bus,
+          "desktop_ui.**",
+          dispatch: {:pid, target: test_pid}
+        )
 
       # Publish a state change signal
       {:ok, signal} =
@@ -498,8 +509,8 @@ defmodule DesktopUI.Renderer.MockTest do
 
       Jido.Signal.Bus.publish(:test_mock_bus, [signal])
 
-      # Wait for render
-      Process.sleep(200)
+      # Wait for the render signal to be processed
+      assert_receive {:signal, %Jido.Signal{}}, 500
 
       # Verify mock renderer received the render
       renders = Mock.get_renders(:coordinator_test_renderer)

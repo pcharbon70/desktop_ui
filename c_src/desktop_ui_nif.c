@@ -693,6 +693,61 @@ static void set_last_error(desktop_ui_nif_state* state, const char* error)
 }
 
 /*
+ * Helper: Set error message with operation context
+ * Formats error as: "<operation> failed: <reason> (value: <value>)"
+ * This provides more context for debugging than generic error messages
+ */
+static void set_error_with_context(desktop_ui_nif_state* state,
+                                   const char* operation,
+                                   const char* reason,
+                                   int value)
+{
+    if (!state) {
+        return;
+    }
+
+    char error_buf[512];
+    if (value >= 0) {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s (value: %d)",
+                 operation, reason, value);
+    } else {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s",
+                 operation, reason);
+    }
+
+    set_last_error(state, error_buf);
+}
+
+/*
+ * Helper: Set error message with string context
+ * Formats error as: "<operation> failed: <reason>: <detail>"
+ */
+static void set_error_with_string_context(desktop_ui_nif_state* state,
+                                         const char* operation,
+                                         const char* reason,
+                                         const char* detail)
+{
+    if (!state) {
+        return;
+    }
+
+    char error_buf[512];
+    if (detail) {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s: %s",
+                 operation, reason, detail);
+    } else {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s",
+                 operation, reason);
+    }
+
+    set_last_error(state, error_buf);
+}
+
+/*
  * Helper: Allocate an available window slot (atomic)
  * Returns slot index or -1 if full
  * Thread-safe: uses mutex to prevent race conditions
@@ -958,9 +1013,11 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
 
     // Validate dimensions
     if (width <= 0 || height <= 0) {
-        set_last_error(state, "Invalid window dimensions");
+        set_error_with_context(state, "window operation",
+                              "dimensions must be positive",
+                              width <= 0 ? width : height);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window dimensions", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Validate upper bounds to prevent integer overflow
@@ -1062,9 +1119,9 @@ static ERL_NIF_TERM nif_destroy_window(ErlNifEnv* env, int argc, const ERL_NIF_T
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Destroy the window
@@ -1128,9 +1185,9 @@ static ERL_NIF_TERM nif_get_window_size(ErlNifEnv* env, int argc, const ERL_NIF_
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Get actual window size from SDL (in case it was resized externally)
@@ -1205,9 +1262,11 @@ static ERL_NIF_TERM nif_set_window_size(ErlNifEnv* env, int argc, const ERL_NIF_
 
     // Validate dimensions
     if (width <= 0 || height <= 0) {
-        set_last_error(state, "Invalid window dimensions");
+        set_error_with_context(state, "window operation",
+                              "dimensions must be positive",
+                              width <= 0 ? width : height);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window dimensions", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Validate upper bounds to prevent integer overflow
@@ -1224,9 +1283,9 @@ static ERL_NIF_TERM nif_set_window_size(ErlNifEnv* env, int argc, const ERL_NIF_
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Set window size
@@ -1308,9 +1367,9 @@ static ERL_NIF_TERM nif_set_window_title(ErlNifEnv* env, int argc, const ERL_NIF
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Create null-terminated title string
@@ -1382,9 +1441,9 @@ static ERL_NIF_TERM nif_create_renderer(ErlNifEnv* env, int argc, const ERL_NIF_
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Allocate available renderer slot (atomic)
@@ -1469,9 +1528,9 @@ static ERL_NIF_TERM nif_destroy_renderer(ErlNifEnv* env, int argc, const ERL_NIF
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Destroy the renderer
@@ -1550,17 +1609,19 @@ static ERL_NIF_TERM nif_set_render_draw_color(ErlNifEnv* env, int argc, const ER
 
     // Validate color values
     if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-        set_last_error(state, "Color values must be between 0 and 255");
+        set_error_with_string_context(state, "color operation",
+                                      "color values must be between 0 and 255",
+                                      NULL);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Set the draw color
@@ -1623,9 +1684,9 @@ static ERL_NIF_TERM nif_clear_render(ErlNifEnv* env, int argc, const ERL_NIF_TER
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Clear the renderer
@@ -1710,17 +1771,19 @@ static ERL_NIF_TERM nif_draw_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM a
 
     // Validate color values
     if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-        set_last_error(state, "Color values must be between 0 and 255");
+        set_error_with_string_context(state, "color operation",
+                                      "color values must be between 0 and 255",
+                                      NULL);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Save current draw color
@@ -1821,17 +1884,19 @@ static ERL_NIF_TERM nif_fill_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM a
 
     // Validate color values
     if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-        set_last_error(state, "Color values must be between 0 and 255");
+        set_error_with_string_context(state, "color operation",
+                                      "color values must be between 0 and 255",
+                                      NULL);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Save current draw color
@@ -1905,9 +1970,9 @@ static ERL_NIF_TERM nif_present_render(ErlNifEnv* env, int argc, const ERL_NIF_T
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Present the rendered content

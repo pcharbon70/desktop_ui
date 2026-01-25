@@ -101,7 +101,6 @@ defmodule DesktopUI.RendererCacheTest do
         for i <- 1..10 do
           Task.async(fn ->
             RendererCache.put_renderer(i, i * 100)
-            Process.sleep(1)
             RendererCache.get_renderer(i)
           end)
         end
