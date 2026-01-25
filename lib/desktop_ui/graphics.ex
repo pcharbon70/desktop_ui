@@ -48,6 +48,16 @@ defmodule DesktopUI.Graphics do
   in windows. Each window can have a renderer created with `create_renderer/1`,
   which can then be used to draw shapes and present the final image to the screen.
 
+  ## Event Polling
+
+  This module provides event polling functions for capturing user input from
+  the operating system. Events include keyboard input, mouse clicks and movement,
+  and window state changes (resize, close, focus).
+
+  Events are polled using `poll_event/0` for non-blocking checks or `wait_event/1`
+  for blocking waits with a timeout. Events are returned as Elixir terms that
+  can be pattern matched.
+
   ## Examples
 
   Check if the NIF is loaded:
@@ -79,6 +89,25 @@ defmodule DesktopUI.Graphics do
       :ok
       iex> DesktopUI.Graphics.present_render(0)
       :ok
+
+  Poll for events:
+
+      iex> DesktopUI.Graphics.poll_event()
+      {:quit}
+
+      iex> DesktopUI.Graphics.poll_event()
+      {:mouse_button_down, :left, 100, 200}
+
+      iex> DesktopUI.Graphics.poll_event()
+      {:key_down, :key_a, %{shift: false, ctrl: false, alt: false, gui: false}}
+
+  Wait for events with timeout:
+
+      iex> DesktopUI.Graphics.wait_event(1000)
+      {:key_down, :key_escape, %{shift: false, ctrl: false, alt: false, gui: false}}
+
+      iex> DesktopUI.Graphics.wait_event(100)
+      :timeout
 
   """
 
@@ -588,6 +617,148 @@ defmodule DesktopUI.Graphics do
   end
 
   # ============================================================================
+  # Event Polling API
+  # ============================================================================
+
+  @doc """
+  Poll for the next available event without blocking.
+
+  This function checks if there are any pending events in the SDL2 event queue
+  and returns the first one if available. If no events are available, it returns
+  `:no_event` immediately without blocking.
+
+  ## Returns
+
+  - `event` - An event tuple such as:
+    - `{:quit}` - User requested application quit
+    - `{:mouse_button_down, button, x, y}` - Mouse button pressed
+    - `{:mouse_button_up, button, x, y}` - Mouse button released
+    - `{:mouse_motion, x, y, xrel, yrel}` - Mouse moved
+    - `{:key_down, keycode, modifiers}` - Key pressed
+    - `{:key_up, keycode, modifiers}` - Key released
+    - `{:window_event, event_id, data}` - Window state changed
+  - `:no_event` - No events available
+  - `{:error, reason}` - Failed to poll for events
+
+  ## Event Types
+
+  ### Quit Event
+      {:quit}
+
+  ### Mouse Button Events
+      {:mouse_button_down, button, x, y}
+      {:mouse_button_up, button, x, y}
+
+  Where `button` is one of: `:left`, `:middle`, `:right`, `:x1`, `:x2`
+
+  ### Mouse Motion Event
+      {:mouse_motion, x, y, xrel, yrel}
+
+  Where `xrel` and `yrel` are the relative motion since the last event.
+
+  ### Keyboard Events
+      {:key_down, keycode, modifiers}
+      {:key_up, keycode, modifiers}
+
+  Where `keycode` is one of:
+    - Letter keys: `:key_a` through `:key_z`
+    - Number keys: `:key_0` through `:key_9`
+    - Special keys: `:key_escape`, `:key_return`, `:key_space`, `:key_backspace`,
+      `:key_tab`, `:key_home`, `:key_end`, `:key_insert`, `:key_delete`,
+      `:key_left`, `:key_right`, `:key_up`, `:key_down`, `:key_pageup`,
+      `:key_pagedown`, `:key_f1` through `:key_f12`
+
+  Where `modifiers` is a map:
+      %{shift: boolean(), ctrl: boolean(), alt: boolean(), gui: boolean()}
+
+  ### Window Events
+      {:window_event, event_id, data1, data2}
+
+  Where `event_id` is one of: `:shown`, `:hidden`, `:exposed`, `:moved`,
+  `:resized`, `:size_changed`, `:minimized`, `:maximized`, `:restored`,
+  `:enter`, `:leave`, `:focus_gained`, `:focus_lost`, `:close`
+
+  ## Examples
+
+  Poll for events in a loop:
+
+      loop do
+        case DesktopUI.Graphics.poll_event() do
+          {:quit} ->
+            # User wants to quit
+            :quit
+
+          {:mouse_button_down, :left, x, y} ->
+            # Left mouse button clicked at x, y
+            handle_click(x, y)
+
+          {:key_down, :key_escape, _modifiers} ->
+            # Escape key pressed
+            :quit
+
+          {:key_down, keycode, modifiers} ->
+            # Some other key pressed
+            handle_key(keycode, modifiers)
+
+          :no_event ->
+            # No events, continue loop
+            :continue
+
+          {:error, reason} ->
+            # Error occurred
+            {:error, reason}
+        end
+      end
+
+  """
+  @spec poll_event() ::
+          term() | :no_event | {:error, String.t()}
+  def poll_event do
+    nif_poll_event()
+  end
+
+  @doc """
+  Wait for an event with a timeout.
+
+  This function blocks until an event is available or the timeout expires.
+  This is useful for event loops that want to wait efficiently for user input.
+
+  ## Parameters
+
+  - `timeout` - Timeout in milliseconds (non-negative integer)
+
+  ## Returns
+
+  - `event` - An event tuple (see `poll_event/0` for event types)
+  - `:timeout` - No event occurred before timeout
+  - `{:error, reason}` - Failed to wait for events
+
+  ## Examples
+
+  Wait up to 1 second for an event:
+
+      case DesktopUI.Graphics.wait_event(1000) do
+        {:quit} -> :quit
+        {:key_down, keycode, modifiers} -> handle_key(keycode, modifiers)
+        :timeout -> IO.puts("No events for 1 second")
+        {:error, reason} -> {:error, reason}
+      end
+
+  Wait indefinitely (use a very large timeout):
+
+      # Using 10 years as effectively infinite
+      DesktopUI.Graphics.wait_event(315_360_000_000)
+
+  """
+  @spec wait_event(integer()) ::
+          term() | :timeout | {:error, String.t()}
+  def wait_event(timeout) when is_integer(timeout) do
+    # Treat negative timeouts as 0
+    normalized_timeout = if timeout < 0, do: 0, else: timeout
+    nif_wait_event(normalized_timeout)
+  end
+
+  # ============================================================================
   # NIF Loading
   # ============================================================================
 
@@ -715,6 +886,15 @@ defmodule DesktopUI.Graphics do
   end
 
   defp nif_present_render(_renderer_id) do
+    error_not_loaded()
+  end
+
+  # Event polling NIF stubs
+  defp nif_poll_event do
+    error_not_loaded()
+  end
+
+  defp nif_wait_event(_timeout) do
     error_not_loaded()
   end
 

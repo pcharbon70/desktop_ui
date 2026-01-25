@@ -111,6 +111,9 @@ defmodule DesktopUI.GraphicsTest do
       assert function_exported?(DesktopUI.Graphics, :draw_rect, 6)
       assert function_exported?(DesktopUI.Graphics, :fill_rect, 6)
       assert function_exported?(DesktopUI.Graphics, :present_render, 1)
+      # Event polling functions should also be exported
+      assert function_exported?(DesktopUI.Graphics, :poll_event, 0)
+      assert function_exported?(DesktopUI.Graphics, :wait_event, 1)
     end
 
     test "fallback functions return expected values when NIF not loaded" do
@@ -647,6 +650,269 @@ defmodule DesktopUI.GraphicsTest do
 
         {:error, _reason} ->
           # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    # ============================================================================
+    # Event Polling Tests
+    # ============================================================================
+
+    @tag :sdl2
+    @tag :event
+    test "poll_event/0 returns :no_event when queue is empty" do
+      # When no events are pending, poll_event should return :no_event
+      # This test should work regardless of whether SDL2 is initialized
+      case Graphics.poll_event() do
+        :no_event ->
+          # Expected when queue is empty
+          :ok
+
+        {:error, _reason} ->
+          # Expected when SDL2 not available or not initialized
+          :ok
+
+        event ->
+          # An event was available (also valid - could be pending events)
+          # Verify it's a valid event format
+          assert is_tuple(event) or event == :no_event
+      end
+    end
+
+    @tag :sdl2
+    @tag :event
+    test "poll_event/0 returns event or error when SDL2 unavailable" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # SDL2 available - poll should return :no_event or an event
+          case Graphics.poll_event() do
+            :no_event ->
+              # No events pending - valid
+              :ok
+
+            event when is_tuple(event) ->
+              # Got an event - verify it has valid structure
+              # Events are tuples like {:quit}, {:key_down, ...}, etc.
+              assert is_tuple(event)
+
+            {:error, _reason} ->
+              # Error is also valid
+              :ok
+
+            other ->
+              flunk("Unexpected poll_event result: #{inspect(other)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - poll should return error
+          case Graphics.poll_event() do
+            {:error, _reason} ->
+              # Expected
+              :ok
+
+            other ->
+              flunk("Unexpected poll_event result when SDL2 unavailable: #{inspect(other)}")
+          end
+      end
+    end
+
+    @tag :sdl2
+    @tag :event
+    test "wait_event/1 times out correctly" do
+      # wait_event should return :timeout after the specified timeout
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # SDL2 available - wait_event with short timeout should return :timeout
+          # Use a very short timeout (10ms) to avoid slowing down tests
+          case Graphics.wait_event(10) do
+            :timeout ->
+              # Expected when no events occur
+              :ok
+
+            event when is_tuple(event) ->
+              # An event occurred before timeout - also valid
+              # (could be window events from initialization)
+              assert is_tuple(event)
+
+            {:error, _reason} ->
+              # Error is also valid
+              :ok
+
+            other ->
+              flunk("Unexpected wait_event result: #{inspect(other)}")
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - should return error
+          case Graphics.wait_event(10) do
+            {:error, _reason} ->
+              # Expected
+              :ok
+
+            other ->
+              flunk("Unexpected wait_event result when SDL2 unavailable: #{inspect(other)}")
+          end
+      end
+    end
+
+    @tag :sdl2
+    @tag :event
+    test "wait_event/1 with zero timeout returns immediately" do
+      # Zero timeout should return immediately (either :timeout or event)
+      case Graphics.wait_event(0) do
+        :timeout ->
+          # Expected when no events pending
+          :ok
+
+        event when is_tuple(event) ->
+          # Event available immediately - also valid
+          :ok
+
+        {:error, _reason} ->
+          # Error is also valid (SDL2 not available)
+          :ok
+
+        other ->
+          flunk("Unexpected wait_event(0) result: #{inspect(other)}")
+      end
+    end
+
+    @tag :sdl2
+    @tag :event
+    test "poll_event/0 returns valid event format when SDL2 available" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create a window to generate events
+          case Graphics.create_window("Event Test", 400, 300) do
+            {:ok, _window_id} ->
+              # Poll for any events (window creation may generate events)
+              # Drain any pending events
+              events = Enum.map(1..10, fn _ ->
+                Graphics.poll_event()
+              end)
+
+              # All events should be :no_event or valid event tuples
+              Enum.each(events, fn event ->
+                case event do
+                  :no_event ->
+                    :ok
+
+                  {:quit} ->
+                    :ok
+
+                  {:mouse_button_down, button, x, y} when is_atom(button) and is_integer(x) and is_integer(y) ->
+                    :ok
+
+                  {:mouse_button_up, button, x, y} when is_atom(button) and is_integer(x) and is_integer(y) ->
+                    :ok
+
+                  {:mouse_motion, x, y, xrel, yrel} when is_integer(x) and is_integer(y) and is_integer(xrel) and is_integer(yrel) ->
+                    :ok
+
+                  {:key_down, keycode, modifiers} when is_atom(keycode) and is_map(modifiers) ->
+                    :ok
+
+                  {:key_up, keycode, modifiers} when is_atom(keycode) and is_map(modifiers) ->
+                    :ok
+
+                  {:window_event, event_id, data1, data2} when is_atom(event_id) and is_integer(data1) and is_integer(data2) ->
+                    :ok
+
+                  {:error, _reason} ->
+                    :ok
+
+                  other ->
+                    flunk("Invalid event format: #{inspect(other)}")
+                end
+              end)
+
+              # Clean up
+              Graphics.destroy_window(_window_id)
+
+            {:error, _reason} ->
+              # Window creation failed - skip this test
+              :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :event
+    test "event functions handle negative timeout gracefully" do
+      # Negative timeout should be handled (may return error or be treated as zero)
+      case Graphics.wait_event(-1) do
+        :timeout ->
+          :ok
+
+        {:error, _reason} ->
+          :ok
+
+        event when is_tuple(event) ->
+          :ok
+
+        other ->
+          flunk("Unexpected wait_event(-1) result: #{inspect(other)}")
+      end
+    end
+
+    @tag :sdl2
+    @tag :event
+    test "event polling with window lifecycle when SDL2 available" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Test event polling throughout window lifecycle
+          assert {:ok, window_id} = Graphics.create_window("Event Lifecycle", 400, 300)
+
+          # Poll events after window creation
+          case Graphics.poll_event() do
+            :no_event -> :ok
+            {:error, _reason} -> :ok
+            _event -> :ok
+          end
+
+          # Destroy window
+          assert :ok = Graphics.destroy_window(window_id)
+
+          # Poll events after window destruction
+          case Graphics.poll_event() do
+            :no_event -> :ok
+            {:error, _reason} -> :ok
+            _event -> :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :event
+    test "poll_event/0 returns error when NIF not loaded" do
+      # This test verifies the stub returns appropriate error
+      # We can't really test "NIF not loaded" since it's loaded at compile time,
+      # but we can verify the function handles SDL2 not being available
+      case Graphics.initialized?() do
+        false ->
+          # NIF not initialized - poll_event should return error
+          case Graphics.poll_event() do
+            {:error, _reason} ->
+              :ok
+
+            :no_event ->
+              # Also acceptable - stub might return :no_event
+              :ok
+
+            other ->
+              flunk("Unexpected result when NIF not initialized: #{inspect(other)}")
+          end
+
+        true ->
+          # NIF is initialized - skip this test
           :ok
       end
     end

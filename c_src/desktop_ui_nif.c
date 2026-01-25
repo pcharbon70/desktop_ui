@@ -45,6 +45,14 @@
  * Forward declarations for SDL types when SDL2 is not available
  */
 #if !DESKTOPUI_HAS_SDL2
+
+/* SDL type definitions (when SDL2 is not available) */
+typedef uint8_t Uint8;
+typedef uint16_t Uint16;
+typedef uint32_t Uint32;
+typedef uint64_t Uint64;
+typedef int32_t Sint32;
+
 typedef struct SDL_Window SDL_Window;
 typedef struct SDL_Renderer SDL_Renderer;
 struct SDL_Window {
@@ -53,6 +61,69 @@ struct SDL_Window {
 struct SDL_Renderer {
     int dummy;
 };
+
+/* Forward type declarations for event structures */
+typedef struct {
+    int scancode;
+    int sym;
+    Uint16 mod;
+    Uint32 unused;
+} SDL_Keysym;
+
+typedef struct {
+    Uint8 b, g, r, a;
+} SDL_Color;
+
+typedef struct {
+    int x, y, w, h;
+} SDL_Rect;
+
+/* Event structure definition */
+typedef struct SDL_Event {
+    Uint32 type;
+    union {
+        struct {
+            Uint32 timestamp;
+            Uint32 windowID;
+            Uint8 state;
+            Uint8 repeat;
+            Uint8 padding2;
+            Uint8 padding3;
+            SDL_Keysym keysym;
+        } key;
+        struct {
+            Uint32 timestamp;
+            Uint32 windowID;
+            Uint32 which;
+            Uint8 state;
+            Uint8 button;
+            Uint8 padding1;
+            Uint8 padding2;
+            int x;
+            int y;
+        } button;
+        struct {
+            Uint32 timestamp;
+            Uint32 windowID;
+            Uint32 which;
+            Uint32 state;
+            int x;
+            int y;
+            int xrel;
+            int yrel;
+        } motion;
+        struct {
+            Uint32 timestamp;
+            Uint32 windowID;
+            Uint8 event;
+            Uint8 padding1;
+            Uint8 padding2;
+            Uint8 padding3;
+            int data1;
+            int data2;
+        } window;
+    } padding;
+} SDL_Event;
 
 /* Stub SDL functions for when SDL2 is not available */
 #define SDL_INIT_VIDEO 0x00000020
@@ -116,12 +187,130 @@ static inline int SDL_RenderFillRect(SDL_Renderer* renderer, const SDL_Rect* rec
 static inline void SDL_RenderPresent(SDL_Renderer* renderer) {
     (void)renderer;
 }
-typedef struct {
-    Uint8 b, g, r, a;
-} SDL_Color;
-typedef struct {
-    int x, y, w, h;
-} SDL_Rect;
+
+/* Event stubs */
+#define SDL_QUIT 0x100
+#define SDL_KEYDOWN 0x300
+#define SDL_KEYUP 0x301
+#define SDL_MOUSEBUTTONDOWN 0x401
+#define SDL_MOUSEBUTTONUP 0x402
+#define SDL_MOUSEMOTION 0x400
+#define SDL_WINDOWEVENT 0x200
+
+#define SDLK_UNKNOWN 0
+#define SDLK_BACKSPACE 8
+#define SDLK_TAB 9
+#define SDLK_RETURN 13
+#define SDLK_ESCAPE 27
+#define SDLK_SPACE 32
+#define SDLK_EXCLAIM 33
+#define SDLK_QUOTEDBL 34
+#define SDLK_HASH 35
+#define SDLK_DOLLAR 36
+#define SDLK_AMPERSAND 37
+#define SDLK_QUOTE 39
+#define SDLK_LEFTPAREN 40
+#define SDLK_RIGHTPAREN 41
+#define SDLK_ASTERISK 42
+#define SDLK_PLUS 43
+#define SDLK_COMMA 44
+#define SDLK_MINUS 45
+#define SDLK_PERIOD 46
+#define SDLK_SLASH 47
+#define SDLK_0 48
+#define SDLK_1 49
+#define SDLK_2 50
+#define SDLK_3 51
+#define SDLK_4 52
+#define SDLK_5 53
+#define SDLK_6 54
+#define SDLK_7 55
+#define SDLK_8 56
+#define SDLK_9 57
+#define SDLK_COLON 58
+#define SDLK_SEMICOLON 59
+#define SDLK_LESS 60
+#define SDLK_EQUALS 61
+#define SDLK_GREATER 62
+#define SDLK_QUESTION 63
+#define SDLK_AT 64
+#define SDLK_LEFTBRACKET 91
+#define SDLK_BACKSLASH 92
+#define SDLK_RIGHTBRACKET 93
+#define SDLK_CARET 94
+#define SDLK_UNDERSCORE 95
+#define SDLK_BACKQUOTE 96
+#define SDLK_a 97
+#define SDLK_b 98
+#define SDLK_c 99
+#define SDLK_d 100
+#define SDLK_e 101
+#define SDLK_f 102
+#define SDLK_g 103
+#define SDLK_h 104
+#define SDLK_i 105
+#define SDLK_j 106
+#define SDLK_k 107
+#define SDLK_l 108
+#define SDLK_m 109
+#define SDLK_n 110
+#define SDLK_o 111
+#define SDLK_p 112
+#define SDLK_q 113
+#define SDLK_r 114
+#define SDLK_s 115
+#define SDLK_t 116
+#define SDLK_u 117
+#define SDLK_v 118
+#define SDLK_w 119
+#define SDLK_x 120
+#define SDLK_y 121
+#define SDLK_z 122
+#define SDLK_DELETE 127
+
+#define KMOD_NONE 0x0000
+#define KMOD_LSHIFT 0x0001
+#define KMOD_RSHIFT 0x0002
+#define KMOD_LCTRL 0x0040
+#define KMOD_RCTRL 0x0080
+#define KMOD_LALT 0x0100
+#define KMOD_RALT 0x0200
+#define KMOD_LGUI 0x0400
+#define KMOD_RGUI 0x0800
+#define KMOD_SHIFT 0x0003
+#define KMOD_CTRL 0x00C0
+#define KMOD_ALT 0x0300
+#define KMOD_GUI 0x0C00
+
+#define SDL_BUTTON_LEFT 1
+#define SDL_BUTTON_MIDDLE 2
+#define SDL_BUTTON_RIGHT 3
+#define SDL_BUTTON_X1 4
+#define SDL_BUTTON_X2 5
+
+#define SDL_WINDOWEVENT_SHOWN 1
+#define SDL_WINDOWEVENT_HIDDEN 2
+#define SDL_WINDOWEVENT_EXPOSED 3
+#define SDL_WINDOWEVENT_MOVED 4
+#define SDL_WINDOWEVENT_RESIZED 5
+#define SDL_WINDOWEVENT_SIZE_CHANGED 6
+#define SDL_WINDOWEVENT_MINIMIZED 7
+#define SDL_WINDOWEVENT_MAXIMIZED 8
+#define SDL_WINDOWEVENT_RESTORED 9
+#define SDL_WINDOWEVENT_ENTER 10
+#define SDL_WINDOWEVENT_LEAVE 11
+#define SDL_WINDOWEVENT_FOCUS_GAINED 12
+#define SDL_WINDOWEVENT_FOCUS_LOST 13
+#define SDL_WINDOWEVENT_CLOSE 14
+
+static inline int SDL_PollEvent(SDL_Event* event) {
+    (void)event;
+    return 0;
+}
+static inline int SDL_WaitEventTimeout(SDL_Event* event, int timeout) {
+    (void)event; (void)timeout;
+    return 0;
+}
 #endif
 
 /*
@@ -193,12 +382,22 @@ static ERL_NIF_TERM nif_draw_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM a
 static ERL_NIF_TERM nif_fill_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM nif_present_render(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 
+/* Event polling functions */
+static ERL_NIF_TERM nif_poll_event(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_wait_event(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+
 /* Helper functions */
 static void set_last_error(desktop_ui_nif_state* state, const char* error);
 static int find_window_slot(desktop_ui_nif_state* state);
 static window_resource_t* find_window_by_id(desktop_ui_nif_state* state, int window_id);
 static int find_renderer_slot(desktop_ui_nif_state* state);
 static renderer_resource_t* find_renderer_by_id(desktop_ui_nif_state* state, int renderer_id);
+
+#if DESKTOPUI_HAS_SDL2
+static ERL_NIF_TERM keycode_to_atom(ErlNifEnv* env, int keycode);
+static ERL_NIF_TERM modifiers_to_map(ErlNifEnv* env, Uint16 mod);
+static ERL_NIF_TERM translate_sdl_event(ErlNifEnv* env, SDL_Event* event);
+#endif
 
 /*
  * ============================================================================
@@ -1573,6 +1772,346 @@ static ERL_NIF_TERM nif_present_render(ErlNifEnv* env, int argc, const ERL_NIF_T
 
 /*
  * ============================================================================
+ * Event Polling and Translation NIF Implementations
+ * ============================================================================
+ */
+
+/*
+ * Helper: Convert SDL keycode to Elixir atom
+ * Returns atom like :key_a, :key_escape, etc.
+ */
+#if DESKTOPUI_HAS_SDL2
+static ERL_NIF_TERM keycode_to_atom(ErlNifEnv* env, int keycode)
+{
+    switch (keycode) {
+        /* Letters */
+        case SDLK_a: return enif_make_atom(env, "key_a");
+        case SDLK_b: return enif_make_atom(env, "key_b");
+        case SDLK_c: return enif_make_atom(env, "key_c");
+        case SDLK_d: return enif_make_atom(env, "key_d");
+        case SDLK_e: return enif_make_atom(env, "key_e");
+        case SDLK_f: return enif_make_atom(env, "key_f");
+        case SDLK_g: return enif_make_atom(env, "key_g");
+        case SDLK_h: return enif_make_atom(env, "key_h");
+        case SDLK_i: return enif_make_atom(env, "key_i");
+        case SDLK_j: return enif_make_atom(env, "key_j");
+        case SDLK_k: return enif_make_atom(env, "key_k");
+        case SDLK_l: return enif_make_atom(env, "key_l");
+        case SDLK_m: return enif_make_atom(env, "key_m");
+        case SDLK_n: return enif_make_atom(env, "key_n");
+        case SDLK_o: return enif_make_atom(env, "key_o");
+        case SDLK_p: return enif_make_atom(env, "key_p");
+        case SDLK_q: return enif_make_atom(env, "key_q");
+        case SDLK_r: return enif_make_atom(env, "key_r");
+        case SDLK_s: return enif_make_atom(env, "key_s");
+        case SDLK_t: return enif_make_atom(env, "key_t");
+        case SDLK_u: return enif_make_atom(env, "key_u");
+        case SDLK_v: return enif_make_atom(env, "key_v");
+        case SDLK_w: return enif_make_atom(env, "key_w");
+        case SDLK_x: return enif_make_atom(env, "key_x");
+        case SDLK_y: return enif_make_atom(env, "key_y");
+        case SDLK_z: return enif_make_atom(env, "key_z");
+
+        /* Numbers */
+        case SDLK_0: return enif_make_atom(env, "key_0");
+        case SDLK_1: return enif_make_atom(env, "key_1");
+        case SDLK_2: return enif_make_atom(env, "key_2");
+        case SDLK_3: return enif_make_atom(env, "key_3");
+        case SDLK_4: return enif_make_atom(env, "key_4");
+        case SDLK_5: return enif_make_atom(env, "key_5");
+        case SDLK_6: return enif_make_atom(env, "key_6");
+        case SDLK_7: return enif_make_atom(env, "key_7");
+        case SDLK_8: return enif_make_atom(env, "key_8");
+        case SDLK_9: return enif_make_atom(env, "key_9");
+
+        /* Special keys */
+        case SDLK_BACKSPACE: return enif_make_atom(env, "key_backspace");
+        case SDLK_TAB: return enif_make_atom(env, "key_tab");
+        case SDLK_RETURN: return enif_make_atom(env, "key_return");
+        case SDLK_ESCAPE: return enif_make_atom(env, "key_escape");
+        case SDLK_SPACE: return enif_make_atom(env, "key_space");
+        case SDLK_DELETE: return enif_make_atom(env, "key_delete");
+
+        /* Punctuation and symbols */
+        case SDLK_EXCLAIM: return enif_make_atom(env, "key_exclaim");
+        case SDLK_QUOTEDBL: return enif_make_atom(env, "key_quotedbl");
+        case SDLK_HASH: return enif_make_atom(env, "key_hash");
+        case SDLK_DOLLAR: return enif_make_atom(env, "key_dollar");
+        case SDLK_AMPERSAND: return enif_make_atom(env, "key_ampersand");
+        case SDLK_QUOTE: return enif_make_atom(env, "key_quote");
+        case SDLK_LEFTPAREN: return enif_make_atom(env, "key_leftparen");
+        case SDLK_RIGHTPAREN: return enif_make_atom(env, "key_rightparen");
+        case SDLK_ASTERISK: return enif_make_atom(env, "key_asterisk");
+        case SDLK_PLUS: return enif_make_atom(env, "key_plus");
+        case SDLK_COMMA: return enif_make_atom(env, "key_comma");
+        case SDLK_MINUS: return enif_make_atom(env, "key_minus");
+        case SDLK_PERIOD: return enif_make_atom(env, "key_period");
+        case SDLK_SLASH: return enif_make_atom(env, "key_slash");
+        case SDLK_COLON: return enif_make_atom(env, "key_colon");
+        case SDLK_SEMICOLON: return enif_make_atom(env, "key_semicolon");
+        case SDLK_LESS: return enif_make_atom(env, "key_less");
+        case SDLK_EQUALS: return enif_make_atom(env, "key_equals");
+        case SDLK_GREATER: return enif_make_atom(env, "key_greater");
+        case SDLK_QUESTION: return enif_make_atom(env, "key_question");
+        case SDLK_AT: return enif_make_atom(env, "key_at");
+        case SDLK_LEFTBRACKET: return enif_make_atom(env, "key_leftbracket");
+        case SDLK_BACKSLASH: return enif_make_atom(env, "key_backslash");
+        case SDLK_RIGHTBRACKET: return enif_make_atom(env, "key_rightbracket");
+        case SDLK_CARET: return enif_make_atom(env, "key_caret");
+        case SDLK_UNDERSCORE: return enif_make_atom(env, "key_underscore");
+        case SDLK_BACKQUOTE: return enif_make_atom(env, "key_backquote");
+
+        default: return enif_make_atom(env, "key_unknown");
+    }
+}
+
+/*
+ * Helper: Convert SDL modifier state to Elixir map
+ * Returns %{shift: boolean(), ctrl: boolean(), alt: boolean(), gui: boolean()}
+ */
+static ERL_NIF_TERM modifiers_to_map(ErlNifEnv* env, Uint16 mod)
+{
+    ERL_NIF_TERM map = enif_make_new_map(env);
+
+    // Shift
+    ERL_NIF_TERM shift_val = (mod & KMOD_SHIFT) ? enif_make_atom(env, "true") : enif_make_atom(env, "false");
+    enif_make_map_put(env, map, enif_make_atom(env, "shift"), shift_val, &map);
+
+    // Ctrl
+    ERL_NIF_TERM ctrl_val = (mod & KMOD_CTRL) ? enif_make_atom(env, "true") : enif_make_atom(env, "false");
+    enif_make_map_put(env, map, enif_make_atom(env, "ctrl"), ctrl_val, &map);
+
+    // Alt
+    ERL_NIF_TERM alt_val = (mod & KMOD_ALT) ? enif_make_atom(env, "true") : enif_make_atom(env, "false");
+    enif_make_map_put(env, map, enif_make_atom(env, "alt"), alt_val, &map);
+
+    // Gui (Windows/Command key)
+    ERL_NIF_TERM gui_val = (mod & KMOD_GUI) ? enif_make_atom(env, "true") : enif_make_atom(env, "false");
+    enif_make_map_put(env, map, enif_make_atom(env, "gui"), gui_val, &map);
+
+    return map;
+}
+
+/*
+ * Helper: Convert SDL button to Elixir atom
+ */
+static ERL_NIF_TERM button_to_atom(ErlNifEnv* env, Uint8 button)
+{
+    switch (button) {
+        case SDL_BUTTON_LEFT: return enif_make_atom(env, "left");
+        case SDL_BUTTON_MIDDLE: return enif_make_atom(env, "middle");
+        case SDL_BUTTON_RIGHT: return enif_make_atom(env, "right");
+        case SDL_BUTTON_X1: return enif_make_atom(env, "x1");
+        case SDL_BUTTON_X2: return enif_make_atom(env, "x2");
+        default: return enif_make_atom(env, "unknown");
+    }
+}
+
+/*
+ * Helper: Convert SDL window event to Elixir atom
+ */
+static ERL_NIF_TERM window_event_to_atom(ErlNifEnv* env, Uint8 event)
+{
+    switch (event) {
+        case SDL_WINDOWEVENT_SHOWN: return enif_make_atom(env, "shown");
+        case SDL_WINDOWEVENT_HIDDEN: return enif_make_atom(env, "hidden");
+        case SDL_WINDOWEVENT_EXPOSED: return enif_make_atom(env, "exposed");
+        case SDL_WINDOWEVENT_MOVED: return enif_make_atom(env, "moved");
+        case SDL_WINDOWEVENT_RESIZED: return enif_make_atom(env, "resized");
+        case SDL_WINDOWEVENT_SIZE_CHANGED: return enif_make_atom(env, "size_changed");
+        case SDL_WINDOWEVENT_MINIMIZED: return enif_make_atom(env, "minimized");
+        case SDL_WINDOWEVENT_MAXIMIZED: return enif_make_atom(env, "maximized");
+        case SDL_WINDOWEVENT_RESTORED: return enif_make_atom(env, "restored");
+        case SDL_WINDOWEVENT_ENTER: return enif_make_atom(env, "enter");
+        case SDL_WINDOWEVENT_LEAVE: return enif_make_atom(env, "leave");
+        case SDL_WINDOWEVENT_FOCUS_GAINED: return enif_make_atom(env, "focus_gained");
+        case SDL_WINDOWEVENT_FOCUS_LOST: return enif_make_atom(env, "focus_lost");
+        case SDL_WINDOWEVENT_CLOSE: return enif_make_atom(env, "close");
+        default: return enif_make_atom(env, "unknown");
+    }
+}
+#endif
+
+/*
+ * Helper: Translate SDL event to Elixir term
+ * Returns translated event or :no_event
+ */
+#if DESKTOPUI_HAS_SDL2
+static ERL_NIF_TERM translate_sdl_event(ErlNifEnv* env, SDL_Event* event)
+{
+    switch (event->type) {
+        case SDL_QUIT: {
+            return enif_make_atom(env, "quit");
+        }
+
+        case SDL_KEYDOWN: {
+            ERL_NIF_TERM keycode = keycode_to_atom(env, event->key.keysym.sym);
+            ERL_NIF_TERM modifiers = modifiers_to_map(env, event->key.keysym.mod);
+            return enif_make_tuple3(env, enif_make_atom(env, "key_down"), keycode, modifiers);
+        }
+
+        case SDL_KEYUP: {
+            ERL_NIF_TERM keycode = keycode_to_atom(env, event->key.keysym.sym);
+            ERL_NIF_TERM modifiers = modifiers_to_map(env, event->key.keysym.mod);
+            return enif_make_tuple3(env, enif_make_atom(env, "key_up"), keycode, modifiers);
+        }
+
+        case SDL_MOUSEBUTTONDOWN: {
+            ERL_NIF_TERM button = button_to_atom(env, event->button.button);
+            ERL_NIF_TERM x = enif_make_int(env, event->button.x);
+            ERL_NIF_TERM y = enif_make_int(env, event->button.y);
+            return enif_make_tuple4(env, enif_make_atom(env, "mouse_button_down"), button, x, y);
+        }
+
+        case SDL_MOUSEBUTTONUP: {
+            ERL_NIF_TERM button = button_to_atom(env, event->button.button);
+            ERL_NIF_TERM x = enif_make_int(env, event->button.x);
+            ERL_NIF_TERM y = enif_make_int(env, event->button.y);
+            return enif_make_tuple4(env, enif_make_atom(env, "mouse_button_up"), button, x, y);
+        }
+
+        case SDL_MOUSEMOTION: {
+            ERL_NIF_TERM x = enif_make_int(env, event->motion.x);
+            ERL_NIF_TERM y = enif_make_int(env, event->motion.y);
+            ERL_NIF_TERM xrel = enif_make_int(env, event->motion.xrel);
+            ERL_NIF_TERM yrel = enif_make_int(env, event->motion.yrel);
+            return enif_make_tuple5(env, enif_make_atom(env, "mouse_motion"), x, y, xrel, yrel);
+        }
+
+        case SDL_WINDOWEVENT: {
+            ERL_NIF_TERM window_event = window_event_to_atom(env, event->window.event);
+            ERL_NIF_TERM data1 = enif_make_int(env, event->window.data1);
+            ERL_NIF_TERM data2 = enif_make_int(env, event->window.data2);
+            return enif_make_tuple4(env, enif_make_atom(env, "window_event"), window_event, data1, data2);
+        }
+
+        default: {
+            // Return :unknown_event for unhandled event types
+            return enif_make_tuple2(env, enif_make_atom(env, "unknown_event"),
+                                  enif_make_int(env, event->type));
+        }
+    }
+}
+#endif
+
+/*
+ * nif_poll_event() -> event | :no_event | {:error, reason}
+ *
+ * Poll for SDL events without blocking.
+ * Returns the next event from the queue, or :no_event if no events pending.
+ *
+ * Returns:
+ *   - event tuple (e.g., {:quit}, {:key_down, ...}, etc.)
+ *   - :no_event if no events pending
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_poll_event(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 0) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    SDL_Event event;
+    int result = SDL_PollEvent(&event);
+
+    if (result == 0) {
+        // No events pending
+        return enif_make_atom(env, "no_event");
+    } else if (result < 0) {
+        // Error polling event
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    } else {
+        // Event available - translate it
+        return translate_sdl_event(env, &event);
+    }
+#endif
+}
+
+/*
+ * nif_wait_event(timeout) -> event | :timeout | {:error, reason}
+ *
+ * Wait for SDL events with a timeout.
+ * Blocks until an event is available or timeout expires.
+ *
+ * Parameters:
+ *   - timeout: Timeout in milliseconds (integer)
+ *
+ * Returns:
+ *   - event tuple (e.g., {:quit}, {:key_down, ...}, etc.)
+ *   - :timeout if no events within timeout
+ *   - {:error, reason} on failure
+ */
+static ERL_NIF_TERM nif_wait_event(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argv;  // May be unused if SDL2 not available at compile time
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if !DESKTOPUI_HAS_SDL2
+    set_last_error(state, "SDL2 not available at compile time");
+    return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                            enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+
+#if DESKTOPUI_HAS_SDL2
+    // Extract timeout (integer)
+    int timeout;
+    if (!enif_get_int(env, argv[0], &timeout)) {
+        return enif_make_badarg(env);
+    }
+
+    // Validate timeout (non-negative)
+    if (timeout < 0) {
+        set_last_error(state, "Timeout must be non-negative");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Timeout must be non-negative", ERL_NIF_UTF8));
+    }
+
+    SDL_Event event;
+    int result = SDL_WaitEventTimeout(&event, timeout);
+
+    if (result == 0) {
+        // Timeout
+        return enif_make_atom(env, "timeout");
+    } else if (result < 0) {
+        // Error waiting for event
+        set_last_error(state, SDL_GetError());
+        ERL_NIF_TERM error_msg = enif_make_string(env, SDL_GetError(), ERL_NIF_UTF8);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"), error_msg);
+    } else {
+        // Event available - translate it
+        return translate_sdl_event(env, &event);
+    }
+#endif
+}
+
+/*
+ * ============================================================================
  * NIF Function Array
  * ============================================================================
  *
@@ -1597,7 +2136,9 @@ static ErlNifFunc nif_funcs[] = {
     {"nif_clear_render", 1, nif_clear_render, 0},
     {"nif_draw_rect", 6, nif_draw_rect, 0},
     {"nif_fill_rect", 6, nif_fill_rect, 0},
-    {"nif_present_render", 1, nif_present_render, 0}
+    {"nif_present_render", 1, nif_present_render, 0},
+    {"nif_poll_event", 0, nif_poll_event, 0},
+    {"nif_wait_event", 1, nif_wait_event, 0}
 };
 
 /*
