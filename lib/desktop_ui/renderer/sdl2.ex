@@ -14,6 +14,8 @@ defmodule DesktopUI.Renderer.SDL2 do
 
   ## Usage
 
+  ### Direct Usage
+
       # Initialize SDL2 and create window
       DesktopUI.Graphics.init()
       {:ok, window_id} = DesktopUI.Graphics.create_window("My App", 800, 600)
@@ -34,6 +36,14 @@ defmodule DesktopUI.Renderer.SDL2 do
       :ok = DesktopUI.Renderer.SDL2.cleanup(renderer)
       DesktopUI.Graphics.destroy_window(window_id)
 
+  ### With RenderingCoordinator
+
+      # The coordinator stores the window_id in ETS for named renderer calls
+      # This allows the SDL2 renderer to work with the coordinator's render/3 API
+
+      DesktopUI.Renderer.SDL2.set_window_id(window_id)
+      :ok = DesktopUI.Renderer.SDL2.render(component_id, widget, :coordinator_name)
+
   """
 
   alias DesktopUI.Graphics
@@ -46,6 +56,9 @@ defmodule DesktopUI.Renderer.SDL2 do
           window_width: pos_integer(),
           window_height: pos_integer()
         }
+
+  # ETS table for storing window_id (for coordinator compatibility)
+  @window_table :desktop_ui_sdl2_renderer_window
 
   # Color constants for placeholder rendering
   @label_color {173, 216, 230, 255}          # Light blue
@@ -125,6 +138,92 @@ defmodule DesktopUI.Renderer.SDL2 do
   end
 
   @doc """
+  Set the window_id for use with the RenderingCoordinator's render/3 API.
+
+  This stores the window_id in an ETS table so that the coordinator can call
+  `render/3` without needing to pass a renderer struct.
+
+  ## Parameters
+
+  - `window_id` - Window ID from Graphics.create_window/4
+
+  ## Returns
+
+  - `:ok`
+
+  ## Examples
+
+      DesktopUI.Renderer.SDL2.set_window_id(window_id)
+
+  """
+  @spec set_window_id(non_neg_integer()) :: :ok
+  def set_window_id(window_id) when is_integer(window_id) do
+    # Create ETS table if it doesn't exist
+    try do
+      :ets.new(@window_table, [:named_table, :public, :set])
+    rescue
+      ArgumentError -> :ok  # Table already exists
+    end
+
+    # Store window_id
+    :ets.insert(@window_table, {:window_id, window_id})
+
+    :ok
+  end
+
+  @doc """
+  Get the stored window_id.
+
+  Returns `nil` if no window_id has been set.
+  """
+  @spec get_window_id() :: non_neg_integer() | nil
+  def get_window_id do
+    case :ets.lookup(@window_table, :window_id) do
+      [{:window_id, window_id}] -> window_id
+      [] -> nil
+    end
+  end
+
+  @doc """
+  Render using the coordinator's render/3 API.
+
+  This function is called by RenderingCoordinator with component_id and name.
+  It retrieves the stored window_id and delegates to the main render/2 function.
+
+  ## Parameters
+
+  - `_component_id` - Component identifier (unused for SDL2 renderer)
+  - `widget` - Widget tree to render
+  - `_name` - Process name (unused for SDL2 renderer)
+
+  ## Returns
+
+  - `:ok` - Rendered successfully
+  """
+  @spec render(String.t(), Widget.t(), atom()) :: :ok
+  def render(_component_id, %Widget{} = widget, _name) do
+    case get_window_id() do
+      nil ->
+        {:error, "No window_id set. Call DesktopUI.Renderer.SDL2.set_window_id/1 first."}
+
+      window_id ->
+        case Graphics.get_window_size(window_id) do
+          {:ok, {width, height}} ->
+            renderer = %__MODULE__{
+              window_id: window_id,
+              window_width: width,
+              window_height: height
+            }
+
+            render(renderer, widget)
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  @doc """
   Cleanup renderer resources.
 
   Currently a no-op since Graphics handles resource cleanup.
@@ -145,6 +244,10 @@ defmodule DesktopUI.Renderer.SDL2 do
     # Graphics handles window/renderer cleanup
     :ok
   end
+
+  @doc false
+  # Get the window table name (used by EventLoop for cleanup)
+  def window_table, do: @window_table
 
   # ============================================================================
   # Private Functions
