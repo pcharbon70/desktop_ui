@@ -16,6 +16,32 @@ defmodule DesktopUI.Graphics do
   SDL2 Library
   ```
 
+  ## Module Organization
+
+  For better code organization, the Graphics API has been split into focused modules:
+
+  - **`DesktopUI.Graphics`** (this module) - Core NIF wrapper, initialization, and event polling
+  - **`DesktopUI.Graphics.Window`** - Window management operations
+  - **`DesktopUI.Graphics.Renderer`** - Renderer management operations
+  - **`DesktopUI.Graphics.Drawing`** - Drawing primitives
+  - **`DesktopUI.Graphics.Convenience`** - High-level convenience API with automatic renderer management
+
+  The old API is fully preserved for backward compatibility. All functions
+  that were previously in this module are still available and delegate to
+  the appropriate sub-module.
+
+  ## Migration Guide
+
+  The old API continues to work:
+
+      DesktopUI.Graphics.create_window("My Window", 800, 600)
+      DesktopUI.Graphics.clear_window(window_id, :black)
+
+  For new code, prefer using the sub-modules directly:
+
+      DesktopUI.Graphics.Window.create("My Window", 800, 600)
+      DesktopUI.Graphics.Convenience.clear(window_id, :black)
+
   ## SDL2 Requirement
 
   This module requires SDL2 to be installed on your system:
@@ -36,28 +62,6 @@ defmodule DesktopUI.Graphics do
   If the NIF fails to load, the module will use fallback implementations
   that return helpful error messages.
 
-  ## Window Management
-
-  This module provides window management functions for creating and managing
-  SDL2 windows. Windows are identified by integer IDs returned from
-  `create_window/4`.
-
-  ## Rendering and Drawing
-
-  This module provides rendering and drawing functions for displaying graphics
-  in windows. Each window can have a renderer created with `create_renderer/1`,
-  which can then be used to draw shapes and present the final image to the screen.
-
-  ## Event Polling
-
-  This module provides event polling functions for capturing user input from
-  the operating system. Events include keyboard input, mouse clicks and movement,
-  and window state changes (resize, close, focus).
-
-  Events are polled using `poll_event/0` for non-blocking checks or `wait_event/1`
-  for blocking waits with a timeout. Events are returned as Elixir terms that
-  can be pattern matched.
-
   ## Examples
 
   Check if the NIF is loaded:
@@ -77,37 +81,17 @@ defmodule DesktopUI.Graphics do
       iex> DesktopUI.Graphics.create_window("My Window", 800, 600)
       {:ok, 0}
 
-  Create a renderer and draw rectangles:
+  Using the new modular API:
 
-      iex> {:ok, renderer} = DesktopUI.Graphics.create_renderer(0)
+      iex> DesktopUI.Graphics.Window.create("My Window", 800, 600)
       {:ok, 0}
-      iex> DesktopUI.Graphics.set_render_draw_color(0, 0, 0, 0, 255)
-      :ok
-      iex> DesktopUI.Graphics.clear_render(0)
-      :ok
-      iex> DesktopUI.Graphics.fill_rect(0, 10, 10, 100, 50, {255, 0, 0, 255})
-      :ok
-      iex> DesktopUI.Graphics.present_render(0)
+      iex> DesktopUI.Graphics.Convenience.clear(0, :black)
       :ok
 
   Poll for events:
 
       iex> DesktopUI.Graphics.poll_event()
       {:quit}
-
-      iex> DesktopUI.Graphics.poll_event()
-      {:mouse_button_down, :left, 100, 200}
-
-      iex> DesktopUI.Graphics.poll_event()
-      {:key_down, :key_a, %{shift: false, ctrl: false, alt: false, gui: false}}
-
-  Wait for events with timeout:
-
-      iex> DesktopUI.Graphics.wait_event(1000)
-      {:key_down, :key_escape, %{shift: false, ctrl: false, alt: false, gui: false}}
-
-      iex> DesktopUI.Graphics.wait_event(100)
-      :timeout
 
   """
 
@@ -1064,83 +1048,103 @@ defmodule DesktopUI.Graphics do
 
   # These functions are implemented in the C NIF.
   # If the NIF is not loaded, these stubs will be called instead.
+  # These are marked as public with @doc false so sub-modules can call them.
 
-  defp nif_init_nif do
+  @doc false
+  def nif_init_nif do
     error_not_loaded()
   end
 
-  defp nif_get_version do
+  @doc false
+  def nif_get_version do
     "0.3.0-fallback"
   end
 
-  defp nif_get_error do
+  @doc false
+  def nif_get_error do
     "NIF not loaded"
   end
 
-  defp nif_is_initialized do
+  @doc false
+  def nif_is_initialized do
     "false"
   end
 
   # Window management NIF stubs
-  defp nif_sdl_init do
+  @doc false
+  def nif_sdl_init do
     error_not_loaded()
   end
 
-  defp nif_create_window(_title, _width, _height, _flags) do
+  @doc false
+  def nif_create_window(_title, _width, _height, _flags) do
     error_not_loaded()
   end
 
-  defp nif_destroy_window(_window_id) do
+  @doc false
+  def nif_destroy_window(_window_id) do
     error_not_loaded()
   end
 
-  defp nif_get_window_size(_window_id) do
+  @doc false
+  def nif_get_window_size(_window_id) do
     error_not_loaded()
   end
 
-  defp nif_set_window_size(_window_id, _width, _height) do
+  @doc false
+  def nif_set_window_size(_window_id, _width, _height) do
     error_not_loaded()
   end
 
-  defp nif_set_window_title(_window_id, _title) do
+  @doc false
+  def nif_set_window_title(_window_id, _title) do
     error_not_loaded()
   end
 
   # Renderer and drawing NIF stubs
-  defp nif_create_renderer(_window_id) do
+  @doc false
+  def nif_create_renderer(_window_id) do
     error_not_loaded()
   end
 
-  defp nif_destroy_renderer(_renderer_id) do
+  @doc false
+  def nif_destroy_renderer(_renderer_id) do
     error_not_loaded()
   end
 
-  defp nif_set_render_draw_color(_renderer_id, _r, _g, _b, _a) do
+  @doc false
+  def nif_set_render_draw_color(_renderer_id, _r, _g, _b, _a) do
     error_not_loaded()
   end
 
-  defp nif_clear_render(_renderer_id) do
+  @doc false
+  def nif_clear_render(_renderer_id) do
     error_not_loaded()
   end
 
-  defp nif_draw_rect(_renderer_id, _x, _y, _w, _h, _color) do
+  @doc false
+  def nif_draw_rect(_renderer_id, _x, _y, _w, _h, _color) do
     error_not_loaded()
   end
 
-  defp nif_fill_rect(_renderer_id, _x, _y, _w, _h, _color) do
+  @doc false
+  def nif_fill_rect(_renderer_id, _x, _y, _w, _h, _color) do
     error_not_loaded()
   end
 
-  defp nif_present_render(_renderer_id) do
+  @doc false
+  def nif_present_render(_renderer_id) do
     error_not_loaded()
   end
 
   # Event polling NIF stubs
-  defp nif_poll_event do
+  @doc false
+  def nif_poll_event do
     error_not_loaded()
   end
 
-  defp nif_wait_event(_timeout) do
+  @doc false
+  def nif_wait_event(_timeout) do
     error_not_loaded()
   end
 
