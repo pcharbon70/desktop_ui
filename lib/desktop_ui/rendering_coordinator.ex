@@ -70,7 +70,7 @@ defmodule DesktopUI.RenderingCoordinator do
 
   """
 
-  alias DesktopUI.Widget
+  alias DesktopUI.{Layout, Widget}
 
   use GenServer
   require Logger
@@ -78,6 +78,7 @@ defmodule DesktopUI.RenderingCoordinator do
   # ETS table for component registry (persisted across GenServer callbacks)
   @components_table :desktop_ui_rendering_coordinator_components
   @metrics_table :desktop_ui_rendering_coordinator_metrics
+  @layouts_table :desktop_ui_rendering_coordinator_layouts
 
   @doc """
   Start the RenderingCoordinator.
@@ -128,6 +129,12 @@ defmodule DesktopUI.RenderingCoordinator do
     # Create metrics table if it doesn't exist
     case :ets.whereis(@metrics_table) do
       :undefined -> :ets.new(@metrics_table, table_opts)
+      _ -> :already_exists
+    end
+
+    # Create layouts table if it doesn't exist
+    case :ets.whereis(@layouts_table) do
+      :undefined -> :ets.new(@layouts_table, table_opts)
       _ -> :already_exists
     end
 
@@ -341,6 +348,44 @@ defmodule DesktopUI.RenderingCoordinator do
     |> Enum.into(%{})
   end
 
+  @doc """
+  Hit test for a component's current layout.
+
+  This function performs a hit test on the stored layout tree for a component
+  to determine which widget was clicked at the given position.
+
+  Returns `{:ok, %{widget_id: id, on_click: message}}` for interactive widgets,
+  or `nil` if no widget was found at the position.
+
+  ## Parameters
+
+  - `component_id` - The component to test
+  - `x` - X coordinate
+  - `y` - Y coordinate
+
+  ## Examples
+
+      DesktopUI.RenderingCoordinator.hit_test("counter_123", 100, 50)
+      #=> {:ok, %{widget_id: :btn_inc, on_click: :increment}}
+
+      DesktopUI.RenderingCoordinator.hit_test("counter_123", 9999, 9999)
+      #=> nil
+
+  """
+  @spec hit_test(String.t(), non_neg_integer(), non_neg_integer()) ::
+    {:ok, %{widget_id: atom(), on_click: term()}} | nil
+  def hit_test(component_id, x, y) do
+    ensure_ets_tables()
+
+    case :ets.lookup(@layouts_table, {component_id, "current"}) do
+      [{{_key, "current"}, layout}] ->
+        Layout.hit_test(layout, x, y)
+
+      [] ->
+        nil
+    end
+  end
+
   # Private Functions
 
   # Handle a state change signal from a component
@@ -392,18 +437,44 @@ defmodule DesktopUI.RenderingCoordinator do
       # Validate the widget tree
       case Widget.validate(widget) do
         :ok ->
-          # Pass to renderer
-          render_widget(renderer, component_id, widget)
+          # Calculate layout for hit testing
+          # Use a large default bounds if window size not available
+          available_bounds = get_available_bounds()
 
-          # Update metrics in ETS
-          increment_metric(:renders_completed)
+          case Layout.calculate(widget, available_bounds) do
+            {:ok, layout} ->
+              # Store layout for hit testing
+              :ets.insert(@layouts_table, {{component_id, "current"}, layout})
 
-          :ets.insert(
-            @components_table,
-            {component_id, Map.put(component_info, :last_rendered, DateTime.utc_now())}
-          )
+              # Render the widget (renderer will calculate layout internally if needed)
+              render_widget(renderer, component_id, widget)
 
-          :ok
+              # Update metrics in ETS
+              increment_metric(:renders_completed)
+
+              :ets.insert(
+                @components_table,
+                {component_id, Map.put(component_info, :last_rendered, DateTime.utc_now())}
+              )
+
+              :ok
+
+            {:error, reason} ->
+              # Layout calculation failed, log and still render
+              Logger.warning("Layout calculation failed for component #{component_id}: #{inspect(reason)}")
+              # Render without storing layout
+              render_widget(renderer, component_id, widget)
+
+              # Update metrics in ETS
+              increment_metric(:renders_completed)
+
+              :ets.insert(
+                @components_table,
+                {component_id, Map.put(component_info, :last_rendered, DateTime.utc_now())}
+              )
+
+              :ok
+          end
 
         {:error, reason} ->
           # Log validation error but don't crash
@@ -500,6 +571,15 @@ defmodule DesktopUI.RenderingCoordinator do
   end
 
   defp component_module?(_), do: false
+
+  # Get available bounds for layout calculation
+  # For now, use a large default since we don't have window size tracking
+  # In the future, this should come from the renderer or window state
+  defp get_available_bounds do
+    # Use a reasonable default - large enough for most UIs
+    # This will be improved when we add window size tracking
+    %{width: 1920, height: 1080}
+  end
 
   # No-op renderer for testing/development
   defmodule NoOpRenderer do

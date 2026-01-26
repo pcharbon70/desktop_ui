@@ -147,6 +147,119 @@ defmodule DesktopUI.Layout do
     %{x: layout.x, y: layout.y, width: layout.width, height: layout.height}
   end
 
+  # Hit Testing API
+
+  alias DesktopUI.Widget
+
+  @doc """
+  Hit test the layout tree to find the widget at the given position.
+
+  This function traverses the layout tree to determine which widget contains
+  the given point (x, y). For interactive widgets (buttons with on_click),
+  returns the widget_id and on_click message.
+
+  Returns `{:ok, %{widget_id: id, on_click: message}}` for interactive widgets,
+  or `nil` if no widget was found at the position.
+
+  ## Parameters
+
+  - `layout` - The layout tree to search
+  - `x` - X coordinate to test
+  - `y` - Y coordinate to test
+
+  ## Examples
+
+      layout = Layout.calculate(widget, %{width: 800, height: 600})
+      Layout.hit_test(layout, 100, 50)
+      #=> {:ok, %{widget_id: :btn_click, on_click: :clicked}}
+
+      Layout.hit_test(layout, 9999, 9999)
+      #=> nil
+
+  """
+  @spec hit_test(t(), non_neg_integer(), non_neg_integer()) ::
+    {:ok, %{widget_id: atom(), on_click: term()}} | nil
+  def hit_test(%__MODULE__{} = layout, x, y) do
+    hit_test_recursive(layout, x, y)
+  end
+
+  # Recursive hit test implementation
+  defp hit_test_recursive(%__MODULE__{} = layout, x, y) do
+    if contains?(layout, x, y) do
+      # Point is within this layout's bounds
+      case layout.widget do
+        %Widget{type: :container} ->
+          # For containers, search children first (reverse order for z-order)
+          case search_children_for_hit(layout, x, y) do
+            nil -> container_widget_info(layout.widget)
+            result -> result
+          end
+
+        %Widget{type: :button} ->
+          # Buttons are interactive
+          button_widget_info(layout.widget)
+
+        %Widget{type: :label} ->
+          # Labels are not interactive
+          nil
+
+        %Widget{type: nil, children: children} when is_list(children) ->
+          # Synthetic widget from layout calculation (nested container)
+          # Search children for hit
+          search_synthetic_children(children, x, y)
+
+        %Widget{type: nil} ->
+          # Other synthetic widgets without type - treat as non-interactive
+          nil
+      end
+    else
+      # Point is outside this layout
+      nil
+    end
+  end
+
+  # Search children for hit (reverse order for z-order: topmost first)
+  defp search_children_for_hit(%__MODULE__{widget: %Widget{children: children}}, x, y) when is_list(children) do
+    children
+    |> Enum.reverse()
+    |> Enum.reduce_while(nil, fn child_layout, _acc ->
+      case hit_test_recursive(child_layout, x, y) do
+        nil -> {:cont, nil}
+        result -> {:halt, result}
+      end
+    end)
+  end
+
+  defp search_children_for_hit(%__MODULE__{}, _x, _y), do: nil
+
+  # Search synthetic children (from nested container layouts)
+  defp search_synthetic_children(children, x, y) when is_list(children) do
+    children
+    |> Enum.reverse()
+    |> Enum.reduce_while(nil, fn child_layout, _acc ->
+      case hit_test_recursive(child_layout, x, y) do
+        nil -> {:cont, nil}
+        result -> {:halt, result}
+      end
+    end)
+  end
+
+  defp search_synthetic_children(_, _x, _y), do: nil
+
+  # Get widget info for button widgets
+  defp button_widget_info(%Widget{id: id, props: props}) do
+    on_click = Keyword.get(props, :on_click)
+
+    if on_click != nil and id != nil do
+      {:ok, %{widget_id: id, on_click: on_click}}
+    else
+      nil
+    end
+  end
+
+  # Get widget info for container widgets (containers don't typically receive clicks)
+  defp container_widget_info(%Widget{}), do: nil
+
   # Layout Calculation API
 
   alias DesktopUI.Layout.{Context, Calculate}
