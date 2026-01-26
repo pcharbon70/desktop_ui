@@ -54,9 +54,14 @@ defmodule DesktopUI.Layout.Calculate do
   # Leaf Widget Layout
 
   defp layout_leaf(%Widget{} = widget, available_bounds, context) do
-    with {:ok, intrinsic_size} <- intrinsic_size(widget, context),
-         {:ok, constrained_size} <- apply_constraints(intrinsic_size, context.constraints, available_bounds),
-         {:ok, position} <- calculate_position(widget, constrained_size, context) do
+    # Extract size props from widget and merge with context constraints
+    widget_constraints = extract_widget_constraints(widget, available_bounds)
+    merged_constraints = Map.merge(context.constraints, widget_constraints)
+    updated_context = %{context | constraints: merged_constraints}
+
+    with {:ok, intrinsic_size} <- intrinsic_size(widget, updated_context),
+         {:ok, constrained_size} <- apply_constraints(intrinsic_size, updated_context.constraints, available_bounds),
+         {:ok, position} <- calculate_position(widget, constrained_size, updated_context) do
       layout = Layout.new(
         position.x,
         position.y,
@@ -72,18 +77,23 @@ defmodule DesktopUI.Layout.Calculate do
   # Container Layout
 
   defp layout_container(%Widget{props: props} = widget, available_bounds, context) do
+    # Extract size props from widget and merge with context constraints
+    widget_constraints = extract_widget_constraints(widget, available_bounds)
+    merged_constraints = Map.merge(context.constraints, widget_constraints)
+    updated_context = %{context | constraints: merged_constraints}
+
     layout_type = Keyword.get(props, :layout)
 
     case layout_type do
       :vbox ->
-        layout_vbox(widget, available_bounds, context)
+        layout_vbox(widget, available_bounds, updated_context)
 
       :hbox ->
-        layout_hbox(widget, available_bounds, context)
+        layout_hbox(widget, available_bounds, updated_context)
 
       _ ->
         # Fallback for containers without explicit layout type
-        layout_container_fallback(widget, available_bounds, context)
+        layout_container_fallback(widget, available_bounds, updated_context)
     end
   end
 
@@ -514,6 +524,91 @@ defmodule DesktopUI.Layout.Calculate do
       {:ok, %{width: max_width, height: max_height}}
     end
   end
+
+  # Widget Constraint Extraction
+
+  @doc """
+  Extracts size-related props from a widget and converts them to layout constraints.
+
+  This allows widgets to override their intrinsic size with explicit dimensions
+  or request flexible sizing via the expand prop.
+
+  ## Widget Props to Constraints Mapping
+
+  | Widget Prop  | Context Constraint | Notes                           |
+  |-------------|-------------------|---------------------------------|
+  | `:width`    | `:fixed_width`    | Exact pixel width               |
+  | `:height`   | `:fixed_height`   | Exact pixel height              |
+  | `:min_width`| `:min_width`      | Minimum width in pixels         |
+  | `:min_height`| `:min_height`    | Minimum height in pixels        |
+  | `:max_width`| `:max_width`      | Maximum width (or :infinity)    |
+  | `:max_height`| `:max_height`    | Maximum height (or :infinity)   |
+  | `:expand`   | Sets fixed size   | :width, :height, or true        |
+
+  ## Expand Prop
+
+  The `:expand` prop allows widgets to fill available space:
+
+  * `:width` - Expand horizontally to fill available width
+  * `:height` - Expand vertically to fill available height
+  * `true` - Expand in both directions
+  * `false` or nil - No expansion (default)
+
+  ## Examples
+
+      iex> widget = Widget.label("Hello", width: 100, height: 50)
+      iex> Calculate.extract_widget_constraints(widget, %{width: 800, height: 600})
+      %{fixed_width: 100, fixed_height: 50}
+
+      iex> widget = Widget.button("Click", :click, expand: :width)
+      iex> Calculate.extract_widget_constraints(widget, %{width: 800, height: 600})
+      %{fixed_width: 800, max_width: 800}
+
+  """
+  def extract_widget_constraints(%Widget{props: props}, available_bounds) do
+    fixed_width = Keyword.get(props, :width)
+    fixed_height = Keyword.get(props, :height)
+    min_width = Keyword.get(props, :min_width)
+    min_height = Keyword.get(props, :min_height)
+    max_width = Keyword.get(props, :max_width)
+    max_height = Keyword.get(props, :max_height)
+    expand = Keyword.get(props, :expand, false)
+
+    # Handle expand prop - sets fixed size to available space
+    {fixed_width, max_width} = case expand do
+      :width -> {available_bounds.width, available_bounds.width}
+      :height -> {fixed_width, max_width}
+      true -> {available_bounds.width, available_bounds.width}
+      false -> {fixed_width, max_width}
+      nil -> {fixed_width, max_width}
+    end
+
+    {fixed_height, max_height} = case expand do
+      :width -> {fixed_height, max_height}
+      :height -> {available_bounds.height, available_bounds.height}
+      true -> {available_bounds.height, available_bounds.height}
+      false -> {fixed_height, max_height}
+      nil -> {fixed_height, max_height}
+    end
+
+    # Build constraints map, only including non-nil values
+    # Note: Don't include :infinity values for max constraints
+    %{}
+    |> maybe_put_constraint(fixed_width, :fixed_width)
+    |> maybe_put_constraint(fixed_height, :fixed_height)
+    |> maybe_put_constraint(min_width, :min_width)
+    |> maybe_put_constraint(min_height, :min_height)
+    |> maybe_put_constraint(max_width, :max_width, :infinity)
+    |> maybe_put_constraint(max_height, :max_height, :infinity)
+  end
+
+  defp maybe_put_constraint(constraints, nil, _key, _exclude), do: constraints
+  defp maybe_put_constraint(constraints, value, key, exclude) do
+    if value == exclude, do: constraints, else: Map.put(constraints, key, value)
+  end
+
+  defp maybe_put_constraint(constraints, nil, _key), do: constraints
+  defp maybe_put_constraint(constraints, value, key), do: Map.put(constraints, key, value)
 
   # Context Normalization
 

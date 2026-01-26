@@ -114,17 +114,17 @@ Create horizontal container layout:
 
 Add size calculation and hints for individual widget types.
 
-- [ ] **Task 3.4** Implement widget size hints
+- [x] **Task 3.4** Implement widget size hints
 
 Create size calculation for widgets:
 
-- [ ] 3.4.1 Implement `intrinsic_size/2` for label widget (text dimensions)
-- [ ] 3.4.2 Implement `intrinsic_size/2` for button widget (text + padding)
-- [ ] 3.4.3 Implement `intrinsic_size/2` for container (children size)
-- [ ] 3.4.4 Support `:width` and `:height` props to override intrinsic
-- [ ] 3.4.5 Support `:min_width`, `:min_height` constraints
-- [ ] 3.4.6 Support `:max_width`, `:max_height` constraints
-- [ ] 3.4.7 Add `:expand` prop for flexible sizing
+- [x] 3.4.1 Implement `intrinsic_size/2` for label widget (text dimensions)
+- [x] 3.4.2 Implement `intrinsic_size/2` for button widget (text + padding)
+- [x] 3.4.3 Implement `intrinsic_size/2` for container (children size)
+- [x] 3.4.4 Support `:width` and `:height` props to override intrinsic
+- [x] 3.4.5 Support `:min_width`, `:min_height` constraints
+- [x] 3.4.6 Support `:max_width`, `:max_height` constraints
+- [x] 3.4.7 Add `:expand` prop for flexible sizing
 
 **Implementation Notes:**
 - For now, use fixed/estimated sizes (no text rendering yet)
@@ -135,13 +135,15 @@ Create size calculation for widgets:
 - Defaults when sizes not specified
 
 **Unit Tests for Section 3.4:**
-- [ ] 3.4.1 Verify label calculates size from text
-- [ ] 3.4.2 Verify button calculates size from text plus padding
-- [ ] 3.4.3 Verify container calculates from children
-- [ ] 3.4.4 Verify explicit width/height overrides intrinsic
-- [ ] 3.4.5 Verify min constraints are enforced
-- [ ] 3.4.6 Verify max constraints are enforced
-- [ ] 3.4.7 Verify expand fills available space
+- [x] 3.4.1 Verify label calculates size from text
+- [x] 3.4.2 Verify button calculates size from text plus padding
+- [x] 3.4.3 Verify container calculates from children
+- [x] 3.4.4 Verify explicit width/height overrides intrinsic
+- [x] 3.4.5 Verify min constraints are enforced
+- [x] 3.4.6 Verify max constraints are enforced
+- [x] 3.4.7 Verify expand fills available space
+
+**Status:** Complete (2025-01-26)
 
 ---
 
