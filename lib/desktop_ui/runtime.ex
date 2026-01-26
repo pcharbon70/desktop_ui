@@ -64,7 +64,7 @@ defmodule DesktopUI.Runtime do
 
   """
 
-  use Supervisor
+  use GenServer
   alias DesktopUI.Signals
 
   @type option ::
@@ -117,10 +117,10 @@ defmodule DesktopUI.Runtime do
       )
 
   """
-  @spec start_link([option]) :: Supervisor.on_start()
+  @spec start_link([option]) :: GenServer.on_start()
   def start_link(opts) do
     {name_opts, opts} = Keyword.pop(opts, :name, nil)
-    Supervisor.start_link(__MODULE__, opts, name: name_opts)
+    GenServer.start_link(__MODULE__, opts, name: name_opts)
   end
 
   @doc """
@@ -198,43 +198,28 @@ defmodule DesktopUI.Runtime do
   """
   @spec get_root_component() :: pid() | nil
   def get_root_component do
-    # Jido.Agent.Server doesn't register with the Process registry using
-    # the provided name. Instead, we find the child by PID from the
-    # supervisor's children.
-    case Process.whereis(DesktopUI.Runtime) do
-      nil ->
-        nil
-
-      runtime_pid when is_pid(runtime_pid) ->
-        # Get the children of the runtime supervisor
-        children = Supervisor.which_children(runtime_pid)
-
-        # Find the Jido.Agent.Server child (root component)
-        # Children are returned as [{id, pid, type, modules}]
-        case Enum.find(children, fn {id, _pid, _type, _modules} ->
-               id == Jido.Agent.Server
-             end) do
-          {_, pid, _, _} when is_pid(pid) -> pid
-          _ -> nil
-        end
-    end
+    get_root_component(DesktopUI.Runtime)
   end
 
+  @spec get_root_component(atom()) :: pid() | nil
   def get_root_component(runtime_name) when is_atom(runtime_name) do
-    case Process.whereis(runtime_name) do
+    # Get the registry PID from the Runtime's state
+    case GenServer.call(runtime_name, :get_registry_pid) do
       nil ->
+        # No registry available
         nil
 
-      runtime_pid when is_pid(runtime_pid) ->
-        children = Supervisor.which_children(runtime_pid)
-
-        case Enum.find(children, fn {id, _pid, _type, _modules} ->
-               id == Jido.Agent.Server
-             end) do
-          {_, pid, _, _} when is_pid(pid) -> pid
-          _ -> nil
+      pid when is_pid(pid) ->
+        # Try Registry lookup
+        case DesktopUI.Registry.lookup(pid, :root_component) do
+          {:ok, component_pid} when is_pid(component_pid) -> component_pid
+          :error -> nil
         end
     end
+  catch
+    :exit, _ ->
+      # Runtime not running
+      nil
   end
 
   # Server Callbacks
@@ -261,18 +246,21 @@ defmodule DesktopUI.Runtime do
     # Define children in supervision order
     children =
       [
-        # Signal bus must start first
+        # Registry must start first for component registration
+        # Note: Registry uses a public ETS table, so no process name needed
+        {DesktopUI.Registry, []},
+        # Signal bus must start early
         {Jido.Signal.Bus, [name: bus]},
         # EventLoop for SDL2 integration (optional, depends on renderer)
         # Only start EventLoop if we're using SDL2 renderer
         # TODO: We need to get window_id from EventLoop to pass to SDL2 renderer
         # For now, skip EventLoop and add it as a separate concern
         # RenderingCoordinator depends on signal bus
+        # Note: No fixed name to avoid conflicts when Runtime is started/stopped rapidly in tests
         {DesktopUI.RenderingCoordinator,
          [
            renderer: renderer,
-           bus: bus,
-           name: :rendering_coordinator
+           bus: bus
          ]},
         # Root component starts last
         {Jido.Agent.Server,
@@ -284,6 +272,7 @@ defmodule DesktopUI.Runtime do
       ]
 
     # Add EventLoop child if using SDL2
+    # Note: No fixed name to avoid conflicts in tests where Runtime is started/stopped rapidly
     children =
       if use_sdl2 and event_polling do
         [
@@ -296,8 +285,7 @@ defmodule DesktopUI.Runtime do
              fullscreen: fullscreen,
              event_polling: event_polling,
              poll_interval: poll_interval,
-             renderer: renderer,
-             name: :event_loop
+             renderer: renderer
            ]}
           | children
         ]
@@ -305,12 +293,55 @@ defmodule DesktopUI.Runtime do
         children
       end
 
-    # After children start, register root component with coordinator
-    # We'll do this via a Registry or by having the component register itself
-    # For now, the component's init will handle registration via signals
+    # Start a supervisor to manage the children
+    # This allows us to have proper supervision while also handling custom messages
+    # Note: No fixed name to avoid conflicts when Runtime is started/stopped rapidly in tests
+    {:ok, supervisor_pid} =
+      Supervisor.start_link(children, strategy: :one_for_one)
 
-    # Use one_for_one strategy - if a child crashes, only that child is restarted
-    Supervisor.init(children, strategy: :one_for_one)
+    # Get the Registry PID from the supervisor
+    # Search all children since order is not guaranteed
+    registry_pid =
+      Enum.find_value(Supervisor.which_children(supervisor_pid), fn
+        {DesktopUI.Registry, pid, _, _} when is_pid(pid) -> pid
+        _ -> nil
+      end)
+
+    # Try to register root component immediately (send without delay)
+    # The handle_info will retry if not ready yet
+    send(self(), {:register_root_component})
+
+    # Store the supervisor PID, registry PID, and other state
+    {:ok, %{supervisor: supervisor_pid, registry: registry_pid, bus: bus}}
+  end
+
+  @impl true
+  def handle_call(:get_registry_pid, _from, state) do
+    {:reply, state.registry, state}
+  end
+
+  @impl true
+  def handle_info({:register_root_component}, state) do
+    # Register root component with the Registry
+    # Find the Jido.Agent.Server child's PID from the supervisor
+    root_pid =
+      Enum.find_value(Supervisor.which_children(state.supervisor), fn
+        {Jido.Agent.Server, pid, _, _} when is_pid(pid) -> pid
+        _ -> nil
+      end)
+
+    case root_pid do
+      nil ->
+        # Root component not ready yet, retry quickly
+        Process.send_after(self(), {:register_root_component}, 5)
+
+      pid when is_pid(pid) ->
+        if state.registry do
+          DesktopUI.Registry.register(state.registry, :root_component, pid)
+        end
+    end
+
+    {:noreply, state}
   end
 
   # Event conversion
