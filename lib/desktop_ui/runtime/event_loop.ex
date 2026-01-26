@@ -463,14 +463,14 @@ defmodule DesktopUI.Runtime.EventLoop do
   defp validate_poll_interval(_), do: {:error, "poll_interval must be an integer"}
 
   # Cleanup SDL2 resources
-  defp cleanup_sdl2(%{window_id: window_id}) when is_integer(window_id) do
+  defp cleanup_sdl2(%{window_id: window_id, renderer: renderer}) when is_integer(window_id) do
     Graphics.destroy_window(window_id)
 
-    # Clear window_id from SDL2 renderer ETS table
-    try do
-      :ets.delete(DesktopUI.Renderer.SDL2.window_table(), :window_id)
-    rescue
-      _ -> :ok
+    # Clean up renderer-specific resources via callback
+    if Kernel.function_exported?(renderer, :cleanup_window, 1) do
+      renderer.cleanup_window(window_id)
+    else
+      :ok
     end
 
     :ok
