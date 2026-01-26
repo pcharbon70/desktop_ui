@@ -325,6 +325,28 @@ static inline int SDL_WaitEventTimeout(SDL_Event* event, int timeout) {
 /* Maximum number of renderers we can track */
 #define MAX_RENDERERS 128
 
+/* Slot management mutex
+ * Protects access to the in_use flags in windows[] and renderers[] arrays.
+ * This prevents race conditions where two concurrent NIF calls could allocate
+ * the same slot, causing resource corruption.
+ */
+static ErlNifMutex* slot_mutex = NULL;
+
+/* Maximum window dimensions - 8K resolution (7680x4320)
+ * These limits prevent integer overflow and protect against malformed input.
+ * Most practical use cases will be far below these limits.
+ */
+#define MAX_WINDOW_WIDTH 7680
+#define MAX_WINDOW_HEIGHT 4320
+
+/* Maximum window title length
+ * SDL2 doesn't enforce a strict limit, but reasonable bounds prevent:
+ * - Memory exhaustion from extremely long titles
+ * - Display issues with truncated titles
+ * - Potential buffer overflows in platform-specific window managers
+ */
+#define MAX_WINDOW_TITLE_LENGTH 1024
+
 /* Window resource structure - tracks an SDL_Window */
 typedef struct {
     SDL_Window* window;
@@ -388,9 +410,11 @@ static ERL_NIF_TERM nif_wait_event(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
 
 /* Helper functions */
 static void set_last_error(desktop_ui_nif_state* state, const char* error);
-static int find_window_slot(desktop_ui_nif_state* state);
+static int allocate_window_slot(desktop_ui_nif_state* state);
+static void free_window_slot(desktop_ui_nif_state* state, int slot);
 static window_resource_t* find_window_by_id(desktop_ui_nif_state* state, int window_id);
-static int find_renderer_slot(desktop_ui_nif_state* state);
+static int allocate_renderer_slot(desktop_ui_nif_state* state);
+static void free_renderer_slot(desktop_ui_nif_state* state, int slot);
 static renderer_resource_t* find_renderer_by_id(desktop_ui_nif_state* state, int renderer_id);
 
 #if DESKTOPUI_HAS_SDL2
@@ -418,8 +442,16 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     (void)env;        // Suppress unused parameter warning
     (void)load_info;  // Suppress unused parameter warning
 
+    // Create slot management mutex
+    slot_mutex = enif_mutex_create("desktop_ui_slots");
+    if (!slot_mutex) {
+        return 1;  // Failure - cannot create mutex
+    }
+
     desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_alloc(sizeof(desktop_ui_nif_state));
     if (!state) {
+        enif_mutex_destroy(slot_mutex);
+        slot_mutex = NULL;
         return 1;  // Failure
     }
 
@@ -538,6 +570,12 @@ static void unload(ErlNifEnv* env, void* priv_data)
 
         enif_free(state);
     }
+
+    // Destroy slot management mutex
+    if (slot_mutex) {
+        enif_mutex_destroy(slot_mutex);
+        slot_mutex = NULL;
+    }
 }
 
 /*
@@ -655,25 +693,105 @@ static void set_last_error(desktop_ui_nif_state* state, const char* error)
 }
 
 /*
- * Helper: Find an available window slot
+ * Helper: Set error message with operation context
+ * Formats error as: "<operation> failed: <reason> (value: <value>)"
+ * This provides more context for debugging than generic error messages
+ */
+static void set_error_with_context(desktop_ui_nif_state* state,
+                                   const char* operation,
+                                   const char* reason,
+                                   int value)
+{
+    if (!state) {
+        return;
+    }
+
+    char error_buf[512];
+    if (value >= 0) {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s (value: %d)",
+                 operation, reason, value);
+    } else {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s",
+                 operation, reason);
+    }
+
+    set_last_error(state, error_buf);
+}
+
+/*
+ * Helper: Set error message with string context
+ * Formats error as: "<operation> failed: <reason>: <detail>"
+ */
+static void set_error_with_string_context(desktop_ui_nif_state* state,
+                                         const char* operation,
+                                         const char* reason,
+                                         const char* detail)
+{
+    if (!state) {
+        return;
+    }
+
+    char error_buf[512];
+    if (detail) {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s: %s",
+                 operation, reason, detail);
+    } else {
+        snprintf(error_buf, sizeof(error_buf),
+                 "%s failed: %s",
+                 operation, reason);
+    }
+
+    set_last_error(state, error_buf);
+}
+
+/*
+ * Helper: Allocate an available window slot (atomic)
  * Returns slot index or -1 if full
+ * Thread-safe: uses mutex to prevent race conditions
  */
 #if !DESKTOPUI_HAS_SDL2
 __attribute__((unused))
 #endif
-static int find_window_slot(desktop_ui_nif_state* state)
+static int allocate_window_slot(desktop_ui_nif_state* state)
 {
     if (!state) {
         return -1;
     }
 
+    enif_mutex_lock(slot_mutex);
+
     for (int i = 0; i < MAX_WINDOWS; i++) {
         if (!state->windows[i].in_use) {
+            // Atomically mark as used
+            state->windows[i].in_use = 1;
+            enif_mutex_unlock(slot_mutex);
             return i;
         }
     }
 
+    enif_mutex_unlock(slot_mutex);
     return -1;  // No available slots
+}
+
+/*
+ * Helper: Free a window slot (atomic)
+ * Thread-safe: uses mutex to prevent race conditions
+ */
+#if !DESKTOPUI_HAS_SDL2
+__attribute__((unused))
+#endif
+static void free_window_slot(desktop_ui_nif_state* state, int slot)
+{
+    if (!state || slot < 0 || slot >= MAX_WINDOWS) {
+        return;
+    }
+
+    enif_mutex_lock(slot_mutex);
+    state->windows[slot].in_use = 0;
+    enif_mutex_unlock(slot_mutex);
 }
 
 /*
@@ -698,25 +816,50 @@ static window_resource_t* find_window_by_id(desktop_ui_nif_state* state, int win
 }
 
 /*
- * Helper: Find an available renderer slot
+ * Helper: Allocate an available renderer slot (atomic)
  * Returns slot index or -1 if full
+ * Thread-safe: uses mutex to prevent race conditions
  */
 #if !DESKTOPUI_HAS_SDL2
 __attribute__((unused))
 #endif
-static int find_renderer_slot(desktop_ui_nif_state* state)
+static int allocate_renderer_slot(desktop_ui_nif_state* state)
 {
     if (!state) {
         return -1;
     }
 
+    enif_mutex_lock(slot_mutex);
+
     for (int i = 0; i < MAX_RENDERERS; i++) {
         if (!state->renderers[i].in_use) {
+            // Atomically mark as used
+            state->renderers[i].in_use = 1;
+            enif_mutex_unlock(slot_mutex);
             return i;
         }
     }
 
+    enif_mutex_unlock(slot_mutex);
     return -1;  // No available slots
+}
+
+/*
+ * Helper: Free a renderer slot (atomic)
+ * Thread-safe: uses mutex to prevent race conditions
+ */
+#if !DESKTOPUI_HAS_SDL2
+__attribute__((unused))
+#endif
+static void free_renderer_slot(desktop_ui_nif_state* state, int slot)
+{
+    if (!state || slot < 0 || slot >= MAX_RENDERERS) {
+        return;
+    }
+
+    enif_mutex_lock(slot_mutex);
+    state->renderers[slot].in_use = 0;
+    enif_mutex_unlock(slot_mutex);
 }
 
 /*
@@ -832,6 +975,24 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
         return enif_make_badarg(env);
     }
 
+    // Validate title is not empty
+    if (title_bin.size == 0) {
+        set_last_error(state, "Window title cannot be empty");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Window title cannot be empty", ERL_NIF_UTF8));
+    }
+
+    // Validate title length
+    if (title_bin.size >= MAX_WINDOW_TITLE_LENGTH) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window title exceeds maximum length (actual: %zu bytes, max: %d bytes)",
+                 title_bin.size, MAX_WINDOW_TITLE_LENGTH);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
+    }
+
     // Extract width (integer)
     int width;
     if (!enif_get_int(env, argv[1], &width)) {
@@ -852,13 +1013,26 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
 
     // Validate dimensions
     if (width <= 0 || height <= 0) {
-        set_last_error(state, "Invalid window dimensions");
+        set_error_with_context(state, "window operation",
+                              "dimensions must be positive",
+                              width <= 0 ? width : height);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window dimensions", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
-    // Find available window slot
-    int slot = find_window_slot(state);
+    // Validate upper bounds to prevent integer overflow
+    if (width > MAX_WINDOW_WIDTH || height > MAX_WINDOW_HEIGHT) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window dimensions exceed maximum (width: %d, max: %d, height: %d, max: %d)",
+                 width, MAX_WINDOW_WIDTH, height, MAX_WINDOW_HEIGHT);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
+    }
+
+    // Allocate available window slot (atomic)
+    int slot = allocate_window_slot(state);
     if (slot < 0) {
         set_last_error(state, "Maximum number of windows reached");
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
@@ -866,10 +1040,10 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
     }
 
     // Create null-terminated title string
-    char title_str[512];
-    size_t copy_len = title_bin.size < sizeof(title_str) - 1 ? title_bin.size : sizeof(title_str) - 1;
-    memcpy(title_str, title_bin.data, copy_len);
-    title_str[copy_len] = '\0';
+    // Buffer size is MAX_WINDOW_TITLE_LENGTH + 1 for null terminator
+    char title_str[MAX_WINDOW_TITLE_LENGTH + 1];
+    memcpy(title_str, title_bin.data, title_bin.size);
+    title_str[title_bin.size] = '\0';
 
     // Create the window
     SDL_Window* window = SDL_CreateWindow(
@@ -892,7 +1066,7 @@ static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TE
     state->windows[slot].window_id = SDL_GetWindowID(window);
     state->windows[slot].width = width;
     state->windows[slot].height = height;
-    state->windows[slot].in_use = 1;
+    // Note: in_use is already set to 1 by allocate_window_slot()
     state->window_count++;
 
     set_last_error(state, "Window created successfully");
@@ -945,9 +1119,9 @@ static ERL_NIF_TERM nif_destroy_window(ErlNifEnv* env, int argc, const ERL_NIF_T
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Destroy the window
@@ -960,7 +1134,8 @@ static ERL_NIF_TERM nif_destroy_window(ErlNifEnv* env, int argc, const ERL_NIF_T
     win->window_id = 0;
     win->width = 0;
     win->height = 0;
-    win->in_use = 0;
+    // Free slot atomically (sets in_use to 0)
+    free_window_slot(state, window_id);
     state->window_count--;
 
     set_last_error(state, "Window destroyed successfully");
@@ -1010,9 +1185,9 @@ static ERL_NIF_TERM nif_get_window_size(ErlNifEnv* env, int argc, const ERL_NIF_
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Get actual window size from SDL (in case it was resized externally)
@@ -1087,17 +1262,30 @@ static ERL_NIF_TERM nif_set_window_size(ErlNifEnv* env, int argc, const ERL_NIF_
 
     // Validate dimensions
     if (width <= 0 || height <= 0) {
-        set_last_error(state, "Invalid window dimensions");
+        set_error_with_context(state, "window operation",
+                              "dimensions must be positive",
+                              width <= 0 ? width : height);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window dimensions", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
+    }
+
+    // Validate upper bounds to prevent integer overflow
+    if (width > MAX_WINDOW_WIDTH || height > MAX_WINDOW_HEIGHT) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window dimensions exceed maximum (width: %d, max: %d, height: %d, max: %d)",
+                 width, MAX_WINDOW_WIDTH, height, MAX_WINDOW_HEIGHT);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
     }
 
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Set window size
@@ -1158,19 +1346,37 @@ static ERL_NIF_TERM nif_set_window_title(ErlNifEnv* env, int argc, const ERL_NIF
         return enif_make_badarg(env);
     }
 
+    // Validate title is not empty
+    if (title_bin.size == 0) {
+        set_last_error(state, "Window title cannot be empty");
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "Window title cannot be empty", ERL_NIF_UTF8));
+    }
+
+    // Validate title length
+    if (title_bin.size >= MAX_WINDOW_TITLE_LENGTH) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg),
+                 "Window title exceeds maximum length (actual: %zu bytes, max: %d bytes)",
+                 title_bin.size, MAX_WINDOW_TITLE_LENGTH);
+        set_last_error(state, error_msg);
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, error_msg, ERL_NIF_UTF8));
+    }
+
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Create null-terminated title string
-    char title_str[512];
-    size_t copy_len = title_bin.size < sizeof(title_str) - 1 ? title_bin.size : sizeof(title_str) - 1;
-    memcpy(title_str, title_bin.data, copy_len);
-    title_str[copy_len] = '\0';
+    // Buffer size is MAX_WINDOW_TITLE_LENGTH + 1 for null terminator
+    char title_str[MAX_WINDOW_TITLE_LENGTH + 1];
+    memcpy(title_str, title_bin.data, title_bin.size);
+    title_str[title_bin.size] = '\0';
 
     // Set window title
     SDL_SetWindowTitle(win->window, title_str);
@@ -1235,13 +1441,13 @@ static ERL_NIF_TERM nif_create_renderer(ErlNifEnv* env, int argc, const ERL_NIF_
     // Find window
     window_resource_t* win = find_window_by_id(state, window_id);
     if (!win) {
-        set_last_error(state, "Invalid window ID");
+        set_error_with_context(state, "window operation", "invalid window ID", window_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid window ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
-    // Find available renderer slot
-    int slot = find_renderer_slot(state);
+    // Allocate available renderer slot (atomic)
+    int slot = allocate_renderer_slot(state);
     if (slot < 0) {
         set_last_error(state, "Maximum number of renderers reached");
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
@@ -1269,7 +1475,7 @@ static ERL_NIF_TERM nif_create_renderer(ErlNifEnv* env, int argc, const ERL_NIF_
     state->renderers[slot].draw_color.g = 255;
     state->renderers[slot].draw_color.b = 255;
     state->renderers[slot].draw_color.a = 255;
-    state->renderers[slot].in_use = 1;
+    // Note: in_use is already set to 1 by allocate_renderer_slot()
     state->renderer_count++;
 
     set_last_error(state, "Renderer created successfully");
@@ -1322,9 +1528,9 @@ static ERL_NIF_TERM nif_destroy_renderer(ErlNifEnv* env, int argc, const ERL_NIF
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Destroy the renderer
@@ -1340,7 +1546,8 @@ static ERL_NIF_TERM nif_destroy_renderer(ErlNifEnv* env, int argc, const ERL_NIF
     ren->draw_color.g = 0;
     ren->draw_color.b = 0;
     ren->draw_color.a = 0;
-    ren->in_use = 0;
+    // Free slot atomically (sets in_use to 0)
+    free_renderer_slot(state, renderer_id);
     state->renderer_count--;
 
     set_last_error(state, "Renderer destroyed successfully");
@@ -1402,17 +1609,19 @@ static ERL_NIF_TERM nif_set_render_draw_color(ErlNifEnv* env, int argc, const ER
 
     // Validate color values
     if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-        set_last_error(state, "Color values must be between 0 and 255");
+        set_error_with_string_context(state, "color operation",
+                                      "color values must be between 0 and 255",
+                                      NULL);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Set the draw color
@@ -1475,9 +1684,9 @@ static ERL_NIF_TERM nif_clear_render(ErlNifEnv* env, int argc, const ERL_NIF_TER
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Clear the renderer
@@ -1562,17 +1771,19 @@ static ERL_NIF_TERM nif_draw_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM a
 
     // Validate color values
     if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-        set_last_error(state, "Color values must be between 0 and 255");
+        set_error_with_string_context(state, "color operation",
+                                      "color values must be between 0 and 255",
+                                      NULL);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Save current draw color
@@ -1673,17 +1884,19 @@ static ERL_NIF_TERM nif_fill_rect(ErlNifEnv* env, int argc, const ERL_NIF_TERM a
 
     // Validate color values
     if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0 || a > 255) {
-        set_last_error(state, "Color values must be between 0 and 255");
+        set_error_with_string_context(state, "color operation",
+                                      "color values must be between 0 and 255",
+                                      NULL);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Color values must be between 0 and 255", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Save current draw color
@@ -1757,9 +1970,9 @@ static ERL_NIF_TERM nif_present_render(ErlNifEnv* env, int argc, const ERL_NIF_T
     // Find renderer
     renderer_resource_t* ren = find_renderer_by_id(state, renderer_id);
     if (!ren) {
-        set_last_error(state, "Invalid renderer ID");
+        set_error_with_context(state, "renderer operation", "invalid renderer ID", renderer_id);
         return enif_make_tuple2(env, enif_make_atom(env, "error"),
-                                enif_make_string(env, "Invalid renderer ID", ERL_NIF_UTF8));
+                                enif_make_string(env, state->last_error, ERL_NIF_UTF8));
     }
 
     // Present the rendered content

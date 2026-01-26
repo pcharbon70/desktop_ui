@@ -287,6 +287,154 @@ defmodule DesktopUI.GraphicsTest do
 
     @tag :sdl2
     @tag :window_management
+    test "create_window/4 rejects empty title" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Empty title should return error
+          assert {:error, reason} = Graphics.create_window("", 640, 480)
+          reason_str = if is_list(reason), do: List.to_string(reason), else: reason
+          assert String.contains?(reason_str, "cannot be empty")
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :window_management
+    test "create_window/4 rejects title exceeding maximum length" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create a title that exceeds MAX_WINDOW_TITLE_LENGTH (1024)
+          long_title = String.duplicate("A", 1025)
+
+          assert {:error, reason} = Graphics.create_window(long_title, 640, 480)
+          reason_str = if is_list(reason), do: List.to_string(reason), else: reason
+          assert String.contains?(reason_str, "exceeds maximum length")
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :window_management
+    test "create_window/4 accepts title at maximum length boundary" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create a title that is exactly at the limit (1023 bytes, as we check >= MAX)
+          max_title = String.duplicate("B", 1023)
+
+          case Graphics.create_window(max_title, 640, 480) do
+            {:ok, window_id} ->
+              # Window created successfully
+              assert :ok = Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              # SDL2 may have platform-specific limits
+              :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :window_management
+    test "set_window_title/2 rejects empty title" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create a window first
+          case Graphics.create_window("Test Window", 640, 480) do
+            {:ok, window_id} ->
+              # Empty title should return error
+              assert {:error, reason} = Graphics.set_window_title(window_id, "")
+              reason_str = if is_list(reason), do: List.to_string(reason), else: reason
+              assert String.contains?(reason_str, "cannot be empty")
+
+              # Cleanup
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              # Window creation failed - skip test
+              :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :window_management
+    test "set_window_title/2 rejects title exceeding maximum length" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Create a window first
+          case Graphics.create_window("Test Window", 640, 480) do
+            {:ok, window_id} ->
+              # Title exceeding maximum should return error
+              long_title = String.duplicate("C", 1025)
+
+              assert {:error, reason} = Graphics.set_window_title(window_id, long_title)
+              reason_str = if is_list(reason), do: List.to_string(reason), else: reason
+              assert String.contains?(reason_str, "exceeds maximum length")
+
+              # Cleanup
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              # Window creation failed - skip test
+              :ok
+          end
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :window_management
+    test "create_window/4 handles special characters in title" do
+      case Graphics.sdl_init() do
+        {:ok, %{}} ->
+          # Test with various Unicode characters
+          special_titles = [
+            "Hello 世界",  # Chinese characters
+            "Привет",  # Cyrillic
+            "مرحبا",  # Arabic
+            "🎉🎊",  # Emoji
+            "Test\nNewline",  # Newline
+            "Test\tTab",  # Tab
+            "Test<>:\"/\\|?*"  # Windows reserved chars
+          ]
+
+          Enum.each(special_titles, fn title ->
+            case Graphics.create_window(title, 640, 480) do
+              {:ok, window_id} ->
+                # Window created successfully - clean up
+                Graphics.destroy_window(window_id)
+
+              {:error, _reason} ->
+                # SDL2 may reject some special characters - that's okay
+                :ok
+            end
+          end)
+
+        {:error, _reason} ->
+          # SDL2 not available - skip test
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :window_management
     test "full window lifecycle when SDL2 available" do
       # Test the full window lifecycle: init -> create -> get size -> destroy
       case Graphics.sdl_init() do

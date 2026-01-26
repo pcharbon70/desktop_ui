@@ -2,6 +2,8 @@ defmodule DesktopUI.Renderer.SDL2 do
   @moduledoc """
   Real SDL2 renderer that draws widget trees to SDL2 windows.
 
+  This module implements the `DesktopUI.Renderer` behaviour.
+
   This module uses DesktopUI.Graphics API for actual drawing operations.
   For now, renders widgets as colored rectangles without text rendering.
 
@@ -45,6 +47,8 @@ defmodule DesktopUI.Renderer.SDL2 do
       :ok = DesktopUI.Renderer.SDL2.render(component_id, widget, :coordinator_name)
 
   """
+
+  @behaviour DesktopUI.Renderer
 
   alias DesktopUI.Graphics
   alias DesktopUI.Widget
@@ -245,8 +249,35 @@ defmodule DesktopUI.Renderer.SDL2 do
     :ok
   end
 
+  @doc """
+  Clean up window-specific resources.
+
+  This implements the `DesktopUI.Renderer.cleanup_window/1` callback.
+  It removes the window_id from the renderer's ETS table.
+
+  ## Parameters
+
+  - `window_id` - Window identifier
+
+  ## Returns
+
+  - `:ok` - Always succeeds
+  """
+  @impl true
+  @spec cleanup_window(non_neg_integer()) :: :ok
+  def cleanup_window(_window_id) do
+    # Delete window_id from the renderer's ETS table
+    try do
+      :ets.delete(@window_table, :window_id)
+    rescue
+      _ -> :ok
+    end
+
+    :ok
+  end
+
   @doc false
-  # Get the window table name (used by EventLoop for cleanup)
+  # Get the window table name (deprecated, kept for compatibility)
   def window_table, do: @window_table
 
   # ============================================================================

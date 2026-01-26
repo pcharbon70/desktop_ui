@@ -50,6 +50,12 @@ defmodule DesktopUI.Runtime.EventLoop do
 
   alias DesktopUI.Graphics
 
+  # Poll interval bounds (in milliseconds)
+  # Minimum 1ms prevents excessive CPU usage from tight loops
+  # Maximum 1000ms (1 second) ensures responsive event handling
+  @min_poll_interval 1
+  @max_poll_interval 1000
+
   @type option ::
           {:bus, atom()}
           | {:window_title, String.t()}
@@ -139,35 +145,44 @@ defmodule DesktopUI.Runtime.EventLoop do
     poll_interval = Keyword.get(opts, :poll_interval, 16)
     renderer = Keyword.get(opts, :renderer, DesktopUI.Renderer.SDL2)
 
-    # Try to initialize SDL2
-    state = %__MODULE__{
-      bus: bus,
-      window_id: nil,
-      window_width: window_width,
-      window_height: window_height,
-      fullscreen: fullscreen,
-      event_polling: event_polling,
-      poll_interval: poll_interval,
-      renderer: renderer
-    }
+    # Validate poll interval first
+    with :ok <- validate_poll_interval(poll_interval) do
+      # Create initial state
+      state = %__MODULE__{
+        bus: bus,
+        window_id: nil,
+        window_width: window_width,
+        window_height: window_height,
+        fullscreen: fullscreen,
+        event_polling: event_polling,
+        poll_interval: poll_interval,
+        renderer: renderer
+      }
 
-    case initialize_sdl2(state, window_title, window_width, window_height, fullscreen) do
-      {:ok, new_state} ->
-        # Start event polling loop if enabled
-        if event_polling do
-          send(self(), :poll_sdl_events)
-        end
+      # Try to initialize SDL2
+      case initialize_sdl2(state, window_title, window_width, window_height, fullscreen) do
+        {:ok, new_state} ->
+          # Start event polling loop if enabled
+          if event_polling do
+            send(self(), :poll_sdl_events)
+          end
 
-        {:ok, new_state}
+          {:ok, new_state}
 
-      {:error, _reason} = error ->
-        # SDL2 initialization failed - log and continue without SDL2
-        Logger.warning("""
-        SDL2 initialization failed, running in headless mode. \
-        Events will not be processed.\
-        """)
+        {:error, _reason} = error ->
+          # SDL2 initialization failed - log and continue without SDL2
+          Logger.warning("""
+          SDL2 initialization failed, running in headless mode. \
+          Events will not be processed.\
+          """)
 
-        {:ok, state}
+          {:ok, state}
+      end
+    else
+      {:error, reason} ->
+        # Invalid poll interval - stop the GenServer
+        Logger.error("Invalid poll_interval: #{reason}")
+        {:stop, {:invalid_poll_interval, reason}}
     end
   end
 
@@ -430,15 +445,32 @@ defmodule DesktopUI.Runtime.EventLoop do
   defp sdl_button_to_atom(:right), do: :right
   defp sdl_button_to_atom(_), do: :left
 
+  # Validate poll interval is within acceptable bounds
+  @doc false
+  defp validate_poll_interval(interval) when is_integer(interval) do
+    cond do
+      interval < @min_poll_interval ->
+        {:error, "poll_interval must be at least #{@min_poll_interval}ms, got: #{interval}ms"}
+
+      interval > @max_poll_interval ->
+        {:error, "poll_interval must be at most #{@max_poll_interval}ms, got: #{interval}ms"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_poll_interval(_), do: {:error, "poll_interval must be an integer"}
+
   # Cleanup SDL2 resources
-  defp cleanup_sdl2(%{window_id: window_id}) when is_integer(window_id) do
+  defp cleanup_sdl2(%{window_id: window_id, renderer: renderer}) when is_integer(window_id) do
     Graphics.destroy_window(window_id)
 
-    # Clear window_id from SDL2 renderer ETS table
-    try do
-      :ets.delete(DesktopUI.Renderer.SDL2.window_table(), :window_id)
-    rescue
-      _ -> :ok
+    # Clean up renderer-specific resources via callback
+    if Kernel.function_exported?(renderer, :cleanup_window, 1) do
+      renderer.cleanup_window(window_id)
+    else
+      :ok
     end
 
     :ok

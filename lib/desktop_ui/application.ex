@@ -12,7 +12,9 @@ defmodule DesktopUI.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Add child processes here as needed
+      # RendererCache GenServer owns the renderer cache ETS table
+      # This ensures proper cleanup on hot reload and application shutdown
+      {DesktopUI.RendererCache, []}
     ]
 
     opts = [strategy: :one_for_one, name: DesktopUI.Supervisor]
@@ -21,18 +23,8 @@ defmodule DesktopUI.Application do
 
   @impl true
   def stop(_state) do
-    # Cleanup renderer cache ETS table on application shutdown
-    cleanup_renderer_cache()
+    # Cleanup is handled automatically by the RendererCache GenServer
+    # When it terminates, the ETS table is automatically deleted
     :ok
-  end
-
-  defp cleanup_renderer_cache do
-    try do
-      # Delete the ETS table if it exists
-      :ets.delete(:desktop_ui_renderers)
-      :ok
-    rescue
-      ArgumentError -> :ok  # Table doesn't exist
-    end
   end
 end

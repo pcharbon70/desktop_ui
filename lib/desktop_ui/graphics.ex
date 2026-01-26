@@ -16,6 +16,32 @@ defmodule DesktopUI.Graphics do
   SDL2 Library
   ```
 
+  ## Module Organization
+
+  For better code organization, the Graphics API has been split into focused modules:
+
+  - **`DesktopUI.Graphics`** (this module) - Core NIF wrapper, initialization, and event polling
+  - **`DesktopUI.Graphics.Window`** - Window management operations
+  - **`DesktopUI.Graphics.Renderer`** - Renderer management operations
+  - **`DesktopUI.Graphics.Drawing`** - Drawing primitives
+  - **`DesktopUI.Graphics.Convenience`** - High-level convenience API with automatic renderer management
+
+  The old API is fully preserved for backward compatibility. All functions
+  that were previously in this module are still available and delegate to
+  the appropriate sub-module.
+
+  ## Migration Guide
+
+  The old API continues to work:
+
+      DesktopUI.Graphics.create_window("My Window", 800, 600)
+      DesktopUI.Graphics.clear_window(window_id, :black)
+
+  For new code, prefer using the sub-modules directly:
+
+      DesktopUI.Graphics.Window.create("My Window", 800, 600)
+      DesktopUI.Graphics.Convenience.clear(window_id, :black)
+
   ## SDL2 Requirement
 
   This module requires SDL2 to be installed on your system:
@@ -36,28 +62,6 @@ defmodule DesktopUI.Graphics do
   If the NIF fails to load, the module will use fallback implementations
   that return helpful error messages.
 
-  ## Window Management
-
-  This module provides window management functions for creating and managing
-  SDL2 windows. Windows are identified by integer IDs returned from
-  `create_window/4`.
-
-  ## Rendering and Drawing
-
-  This module provides rendering and drawing functions for displaying graphics
-  in windows. Each window can have a renderer created with `create_renderer/1`,
-  which can then be used to draw shapes and present the final image to the screen.
-
-  ## Event Polling
-
-  This module provides event polling functions for capturing user input from
-  the operating system. Events include keyboard input, mouse clicks and movement,
-  and window state changes (resize, close, focus).
-
-  Events are polled using `poll_event/0` for non-blocking checks or `wait_event/1`
-  for blocking waits with a timeout. Events are returned as Elixir terms that
-  can be pattern matched.
-
   ## Examples
 
   Check if the NIF is loaded:
@@ -77,37 +81,17 @@ defmodule DesktopUI.Graphics do
       iex> DesktopUI.Graphics.create_window("My Window", 800, 600)
       {:ok, 0}
 
-  Create a renderer and draw rectangles:
+  Using the new modular API:
 
-      iex> {:ok, renderer} = DesktopUI.Graphics.create_renderer(0)
+      iex> DesktopUI.Graphics.Window.create("My Window", 800, 600)
       {:ok, 0}
-      iex> DesktopUI.Graphics.set_render_draw_color(0, 0, 0, 0, 255)
-      :ok
-      iex> DesktopUI.Graphics.clear_render(0)
-      :ok
-      iex> DesktopUI.Graphics.fill_rect(0, 10, 10, 100, 50, {255, 0, 0, 255})
-      :ok
-      iex> DesktopUI.Graphics.present_render(0)
+      iex> DesktopUI.Graphics.Convenience.clear(0, :black)
       :ok
 
   Poll for events:
 
       iex> DesktopUI.Graphics.poll_event()
       {:quit}
-
-      iex> DesktopUI.Graphics.poll_event()
-      {:mouse_button_down, :left, 100, 200}
-
-      iex> DesktopUI.Graphics.poll_event()
-      {:key_down, :key_a, %{shift: false, ctrl: false, alt: false, gui: false}}
-
-  Wait for events with timeout:
-
-      iex> DesktopUI.Graphics.wait_event(1000)
-      {:key_down, :key_escape, %{shift: false, ctrl: false, alt: false, gui: false}}
-
-      iex> DesktopUI.Graphics.wait_event(100)
-      :timeout
 
   """
 
@@ -801,24 +785,6 @@ defmodule DesktopUI.Graphics do
   #     # Cleanup (renderer destroyed automatically)
   #     DesktopUI.Graphics.destroy_window(window_id)
 
-  # Module attributes for renderer cache and named colors
-  @renderer_table :desktop_ui_renderers
-
-  @named_colors %{
-    black: {0, 0, 0, 255},
-    white: {255, 255, 255, 255},
-    red: {255, 0, 0, 255},
-    green: {0, 255, 0, 255},
-    blue: {0, 0, 255, 255},
-    yellow: {255, 255, 0, 255},
-    cyan: {0, 255, 255, 255},
-    magenta: {255, 0, 255, 255},
-    transparent: {0, 0, 0, 0},
-    gray: {128, 128, 128, 255},
-    dark_gray: {64, 64, 64, 255},
-    light_gray: {192, 192, 192, 255}
-  }
-
   @doc """
   Initialize the SDL2 subsystem (convenience alias for `sdl_init/0`).
 
@@ -866,7 +832,7 @@ defmodule DesktopUI.Graphics do
   @spec clear_window(non_neg_integer(), term()) :: :ok | {:error, String.t()}
   def clear_window(window_id, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- normalize_color(color),
+         {r, g, b, a} <- Color.normalize(color),
          :ok <- set_render_draw_color(renderer_id, r, g, b, a),
       do: clear_render(renderer_id)
   end
@@ -901,7 +867,7 @@ defmodule DesktopUI.Graphics do
           :ok | {:error, String.t()}
   def draw_rect_on_window(window_id, x, y, w, h, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- normalize_color(color),
+         {r, g, b, a} <- Color.normalize(color),
       do: nif_draw_rect(renderer_id, x, y, w, h, {r, g, b, a})
   end
 
@@ -935,7 +901,7 @@ defmodule DesktopUI.Graphics do
           :ok | {:error, String.t()}
   def fill_rect_on_window(window_id, x, y, w, h, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- normalize_color(color),
+         {r, g, b, a} <- Color.normalize(color),
       do: nif_fill_rect(renderer_id, x, y, w, h, {r, g, b, a})
   end
 
@@ -970,17 +936,6 @@ defmodule DesktopUI.Graphics do
   # ============================================================================
 
   @doc false
-  # Initialize the renderer cache ETS table
-  defp init_renderer_cache do
-    try do
-      :ets.new(@renderer_table, [:named_table, :public, :set])
-      :ok
-    rescue
-      ArgumentError -> :ok  # Table already exists
-    end
-  end
-
-  @doc false
   # Ensure a renderer exists for the given window, creating one if needed.
   defp ensure_renderer(window_id) do
     case get_renderer_for_window(window_id) do
@@ -1002,132 +957,33 @@ defmodule DesktopUI.Graphics do
   @doc false
   # Get the cached renderer for a window.
   defp get_renderer_for_window(window_id) do
-    case :ets.lookup(@renderer_table, window_id) do
-      [{^window_id, renderer_id}] -> {:ok, renderer_id}
-      [] -> :error
+    case DesktopUI.RendererCache.get_renderer(window_id) do
+      {:ok, renderer_id} -> {:ok, renderer_id}
+      :error -> :error
     end
+  rescue
+    # RendererCache not started - this can happen during early initialization
+    _ -> :error
   end
 
   @doc false
   # Cache the renderer association for a window.
   defp cache_renderer(window_id, renderer_id) do
-    :ets.insert(@renderer_table, {window_id, renderer_id})
-    :ok
+    DesktopUI.RendererCache.put_renderer(window_id, renderer_id)
   end
 
   @doc false
   # Remove the renderer cache for a window and destroy the renderer.
   defp remove_renderer_cache(window_id) do
-    try do
-      case get_renderer_for_window(window_id) do
-        {:ok, renderer_id} ->
-          :ets.delete(@renderer_table, window_id)
-          destroy_renderer(renderer_id)
+    case get_renderer_for_window(window_id) do
+      {:ok, renderer_id} ->
+        DesktopUI.RendererCache.delete_renderer(window_id)
+        destroy_renderer(renderer_id)
 
-        :error ->
-          :ok
-      end
-    rescue
-      ArgumentError -> :ok  # ETS table doesn't exist
+      :error ->
+        :ok
     end
   end
-
-  @doc false
-  # Normalize color to RGBA tuple {r, g, b, a}.
-  defp normalize_color(color) when is_map(color) do
-    has_keys = Map.has_key?(color, :r) and Map.has_key?(color, :g) and
-               Map.has_key?(color, :b) and Map.has_key?(color, :a)
-
-    with true <- has_keys,
-         r when is_integer(r) and r >= 0 and r <= 255 <- Map.get(color, :r),
-         g when is_integer(g) and g >= 0 and g <= 255 <- Map.get(color, :g),
-         b when is_integer(b) and b >= 0 and b <= 255 <- Map.get(color, :b),
-         a when is_integer(a) and a >= 0 and a <= 255 <- Map.get(color, :a) do
-      {r, g, b, a}
-    else
-      _ -> {:error, "Invalid color map. Expected %{r: 0..255, g: 0..255, b: 0..255, a: 0..255}"}
-    end
-  end
-
-  defp normalize_color(color) when is_tuple(color) do
-    case color do
-      {r, g, b, a}
-        when is_integer(r) and r >= 0 and r <= 255 and
-             is_integer(g) and g >= 0 and g <= 255 and
-             is_integer(b) and b >= 0 and b <= 255 and
-             is_integer(a) and a >= 0 and a <= 255 ->
-        {r, g, b, a}
-
-      {r, g, b}
-        when is_integer(r) and r >= 0 and r <= 255 and
-             is_integer(g) and g >= 0 and g <= 255 and
-             is_integer(b) and b >= 0 and b <= 255 ->
-        {r, g, b, 255}
-
-      _ ->
-        {:error, "Invalid color tuple. Expected {r, g, b, a} or {r, g, b} with values 0-255"}
-    end
-  end
-
-  defp normalize_color(color) when is_atom(color) do
-    case Map.get(@named_colors, color) do
-      nil -> {:error, "Unknown named color: #{color}. Available: #{inspect(Map.keys(@named_colors))}"}
-      rgba -> rgba
-    end
-  end
-
-  defp normalize_color(color) when is_binary(color) do
-    parse_hex_color(color)
-  end
-
-  @doc false
-  # Parse hex color string to RGBA tuple.
-  defp parse_hex_color("#" <> hex) do
-    hex = String.downcase(hex)
-
-    normalized =
-      case String.length(hex) do
-        3 -> parse_3digit_hex(hex)
-        6 -> parse_6digit_hex(hex)
-        8 -> parse_8digit_hex(hex)
-        _ -> {:error, "Invalid hex color format. Expected #RGB, #RRGGBB, or #RRGGBBAA"}
-      end
-
-    case normalized do
-      {:error, _} = error -> error
-      rgba -> rgba
-    end
-  end
-
-  defp parse_hex_color(_), do: {:error, "Invalid hex color format. Expected #RGB, #RRGGBB, or #RRGGBBAA"}
-
-  defp parse_3digit_hex(<<r::utf8, g::utf8, b::utf8>>) do
-    with {r_int, ""} <- Integer.parse(String.duplicate(<<r>>, 2), 16),
-         {g_int, ""} <- Integer.parse(String.duplicate(<<g>>, 2), 16),
-         {b_int, ""} <- Integer.parse(String.duplicate(<<b>>, 2), 16),
-      do: {r_int, g_int, b_int, 255}
-  end
-
-  defp parse_3digit_hex(_), do: {:error, "Invalid 3-digit hex color"}
-
-  defp parse_6digit_hex(<<r1::utf8, r2::utf8, g1::utf8, g2::utf8, b1::utf8, b2::utf8>>) do
-    with {r_int, ""} <- Integer.parse(<<r1, r2>>, 16),
-         {g_int, ""} <- Integer.parse(<<g1, g2>>, 16),
-         {b_int, ""} <- Integer.parse(<<b1, b2>>, 16),
-      do: {r_int, g_int, b_int, 255}
-  end
-
-  defp parse_6digit_hex(_), do: {:error, "Invalid 6-digit hex color"}
-
-  defp parse_8digit_hex(<<r1::utf8, r2::utf8, g1::utf8, g2::utf8, b1::utf8, b2::utf8, a1::utf8, a2::utf8>>) do
-    with {r_int, ""} <- Integer.parse(<<r1, r2>>, 16),
-         {g_int, ""} <- Integer.parse(<<g1, g2>>, 16),
-         {b_int, ""} <- Integer.parse(<<b1, b2>>, 16),
-         {a_int, ""} <- Integer.parse(<<a1, a2>>, 16),
-      do: {r_int, g_int, b_int, a_int}
-  end
-
-  defp parse_8digit_hex(_), do: {:error, "Invalid 8-digit hex color"}
 
   # ============================================================================
   # NIF Loading
@@ -1137,8 +993,8 @@ defmodule DesktopUI.Graphics do
 
   # Load the NIF library when the module is first loaded
   defp load_nif do
-    # Initialize renderer cache ETS table
-    init_renderer_cache()
+    # Note: RendererCache GenServer handles ETS table creation
+    # It is started as part of the application supervision tree
 
     nif_path = case :code.priv_dir(:desktop_ui) do
       {:error, _} -> "desktop_ui_nif"  # Fallback when app not loaded
@@ -1192,83 +1048,103 @@ defmodule DesktopUI.Graphics do
 
   # These functions are implemented in the C NIF.
   # If the NIF is not loaded, these stubs will be called instead.
+  # These are marked as public with @doc false so sub-modules can call them.
 
-  defp nif_init_nif do
+  @doc false
+  def nif_init_nif do
     error_not_loaded()
   end
 
-  defp nif_get_version do
+  @doc false
+  def nif_get_version do
     "0.3.0-fallback"
   end
 
-  defp nif_get_error do
+  @doc false
+  def nif_get_error do
     "NIF not loaded"
   end
 
-  defp nif_is_initialized do
+  @doc false
+  def nif_is_initialized do
     "false"
   end
 
   # Window management NIF stubs
-  defp nif_sdl_init do
+  @doc false
+  def nif_sdl_init do
     error_not_loaded()
   end
 
-  defp nif_create_window(_title, _width, _height, _flags) do
+  @doc false
+  def nif_create_window(_title, _width, _height, _flags) do
     error_not_loaded()
   end
 
-  defp nif_destroy_window(_window_id) do
+  @doc false
+  def nif_destroy_window(_window_id) do
     error_not_loaded()
   end
 
-  defp nif_get_window_size(_window_id) do
+  @doc false
+  def nif_get_window_size(_window_id) do
     error_not_loaded()
   end
 
-  defp nif_set_window_size(_window_id, _width, _height) do
+  @doc false
+  def nif_set_window_size(_window_id, _width, _height) do
     error_not_loaded()
   end
 
-  defp nif_set_window_title(_window_id, _title) do
+  @doc false
+  def nif_set_window_title(_window_id, _title) do
     error_not_loaded()
   end
 
   # Renderer and drawing NIF stubs
-  defp nif_create_renderer(_window_id) do
+  @doc false
+  def nif_create_renderer(_window_id) do
     error_not_loaded()
   end
 
-  defp nif_destroy_renderer(_renderer_id) do
+  @doc false
+  def nif_destroy_renderer(_renderer_id) do
     error_not_loaded()
   end
 
-  defp nif_set_render_draw_color(_renderer_id, _r, _g, _b, _a) do
+  @doc false
+  def nif_set_render_draw_color(_renderer_id, _r, _g, _b, _a) do
     error_not_loaded()
   end
 
-  defp nif_clear_render(_renderer_id) do
+  @doc false
+  def nif_clear_render(_renderer_id) do
     error_not_loaded()
   end
 
-  defp nif_draw_rect(_renderer_id, _x, _y, _w, _h, _color) do
+  @doc false
+  def nif_draw_rect(_renderer_id, _x, _y, _w, _h, _color) do
     error_not_loaded()
   end
 
-  defp nif_fill_rect(_renderer_id, _x, _y, _w, _h, _color) do
+  @doc false
+  def nif_fill_rect(_renderer_id, _x, _y, _w, _h, _color) do
     error_not_loaded()
   end
 
-  defp nif_present_render(_renderer_id) do
+  @doc false
+  def nif_present_render(_renderer_id) do
     error_not_loaded()
   end
 
   # Event polling NIF stubs
-  defp nif_poll_event do
+  @doc false
+  def nif_poll_event do
     error_not_loaded()
   end
 
-  defp nif_wait_event(_timeout) do
+  @doc false
+  def nif_wait_event(_timeout) do
     error_not_loaded()
   end
 

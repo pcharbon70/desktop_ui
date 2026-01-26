@@ -115,7 +115,7 @@ defmodule DesktopUI.RenderingCoordinator do
     table_opts = [
       :named_table,
       :set,
-      :protected,
+      :public,
       read_concurrency: true
     ]
 
