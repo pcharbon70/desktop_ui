@@ -69,11 +69,29 @@ defmodule DesktopUI.Layout.Calculate do
     end
   end
 
-  # Container Layout (placeholder for sections 3.2 and 3.3)
+  # Container Layout
 
-  defp layout_container(%Widget{children: children} = widget, available_bounds, context) do
-    # For now, containers just calculate intrinsic size from children
-    # Full positioning logic comes in sections 3.2 (VBox) and 3.3 (HBox)
+  defp layout_container(%Widget{props: props} = widget, available_bounds, context) do
+    layout_type = Keyword.get(props, :layout)
+
+    case layout_type do
+      :vbox ->
+        layout_vbox(widget, available_bounds, context)
+
+      :hbox ->
+        # HBox is implemented in section 3.3
+        layout_container_fallback(widget, available_bounds, context)
+
+      _ ->
+        # Fallback for containers without explicit layout type
+        layout_container_fallback(widget, available_bounds, context)
+    end
+  end
+
+  # Fallback container layout (used for hbox and untyped containers)
+  defp layout_container_fallback(%Widget{children: children} = widget, available_bounds, context) do
+    # For now, non-vbox containers just calculate intrinsic size from children
+    # Full positioning logic for hbox comes in section 3.3
     with {:ok, intrinsic_size} <- container_intrinsic_size(children, context),
          {:ok, constrained_size} <- apply_constraints(intrinsic_size, context.constraints, available_bounds),
          {:ok, position} <- calculate_position(widget, constrained_size, context) do
@@ -87,6 +105,111 @@ defmodule DesktopUI.Layout.Calculate do
 
       {:ok, layout}
     end
+  end
+
+  # VBox Layout Algorithm
+
+  defp layout_vbox(%Widget{children: children, props: props}, available_bounds, context) do
+    spacing = Keyword.get(props, :spacing, 0)
+    padding = Keyword.get(props, :padding, 0)
+    align = Keyword.get(props, :align, :left)
+
+    # Calculate available space for children (after padding)
+    padding_total = padding * 2
+    child_available_width = max(available_bounds.width - padding_total, 0)
+    _child_available_height = max(available_bounds.height - padding_total, 0)
+
+    # Calculate intrinsic size for all children
+    child_intrinsic_sizes =
+      Enum.map(children, fn child ->
+        case intrinsic_size(child, context) do
+          {:ok, size} -> size
+          _ -> %{width: 0, height: 0}
+        end
+      end)
+
+    # Calculate intrinsic container size
+    max_child_width = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> max(acc, size.width) end)
+    total_child_height = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> acc + size.height end)
+    spacing_height = spacing * max(length(children) - 1, 0)
+
+    intrinsic_width = max_child_width + padding_total
+    intrinsic_height = total_child_height + spacing_height + padding_total
+
+    intrinsic_size = %{width: intrinsic_width, height: intrinsic_height}
+
+    # Apply constraints to get final container size
+    with {:ok, constrained_size} <- apply_constraints(intrinsic_size, context.constraints, available_bounds),
+         {:ok, position} <- calculate_position(%Widget{props: props}, constrained_size, context) do
+
+      # Layout each child
+      child_layouts =
+        layout_vbox_children(
+          children,
+          child_intrinsic_sizes,
+          spacing,
+          padding,
+          child_available_width,
+          align,
+          context
+        )
+
+      # Create container layout
+      container_layout = Layout.new(
+        position.x,
+        position.y,
+        constrained_size.width,
+        constrained_size.height,
+        %Widget{children: child_layouts, props: props}
+      )
+
+      {:ok, container_layout}
+    end
+  end
+
+  defp layout_vbox_children(children, intrinsic_sizes, spacing, padding, available_width, align, context) do
+    # Layout each child vertically, accumulating y position
+    {layouts, _y_offset} =
+      Enum.map_reduce(
+        Enum.zip(children, intrinsic_sizes),
+        padding,
+        fn {child, _intrinsic_size}, y_offset ->
+          # Calculate child's layout - give it sufficient height
+          # Use a large value for available height since VBox doesn't constrain child height
+          child_available_bounds = %{width: available_width, height: 10000}
+
+          case calculate(child, child_available_bounds, context) do
+            {:ok, child_layout} ->
+              # Calculate x position based on alignment
+              x_offset = calculate_vbox_x_alignment(child_layout.width, available_width, align, padding)
+              positioned_layout = %{child_layout | x: x_offset, y: y_offset}
+
+              # Next y position = current y + child height + spacing
+              new_y_offset = y_offset + child_layout.height + spacing
+
+              {positioned_layout, new_y_offset}
+
+            {:error, _reason} ->
+              # Return a minimal layout for failed children (use 1x1 to pass guard)
+              failed_layout = Layout.new(padding, y_offset, 1, 1, child)
+              {failed_layout, y_offset}
+          end
+        end
+      )
+
+    layouts
+  end
+
+  defp calculate_vbox_x_alignment(_child_width, _available_width, :left, padding) do
+    padding
+  end
+
+  defp calculate_vbox_x_alignment(child_width, available_width, :center, padding) do
+    padding + div(max(available_width - child_width, 0), 2)
+  end
+
+  defp calculate_vbox_x_alignment(child_width, available_width, :right, padding) do
+    padding + max(available_width - child_width, 0)
   end
 
   # Intrinsic Size Calculation
@@ -123,14 +246,50 @@ defmodule DesktopUI.Layout.Calculate do
     }}
   end
 
-  def intrinsic_size(%Widget{type: :container, children: children}, _context) when is_list(children) do
-    # For now, containers calculate intrinsic size from children
-    # Full implementation in sections 3.2 and 3.3
-    container_intrinsic_size(children, %Context{})
+  def intrinsic_size(%Widget{type: :container, props: props, children: children}, context) when is_list(children) do
+    layout_type = Keyword.get(props, :layout)
+
+    case layout_type do
+      :vbox ->
+        vbox_intrinsic_size(children, props, context)
+
+      :hbox ->
+        # HBox is implemented in section 3.3
+        container_intrinsic_size(children, context)
+
+      _ ->
+        # Fallback for untyped containers
+        container_intrinsic_size(children, context)
+    end
   end
 
   def intrinsic_size(%Widget{type: :container, children: []}, _context) do
     {:ok, %{width: 0, height: 0}}
+  end
+
+  # VBox intrinsic size calculation
+  defp vbox_intrinsic_size(children, props, context) do
+    spacing = Keyword.get(props, :spacing, 0)
+    padding = Keyword.get(props, :padding, 0)
+
+    # Calculate intrinsic size for all children
+    child_intrinsic_sizes =
+      Enum.map(children, fn child ->
+        case intrinsic_size(child, context) do
+          {:ok, size} -> size
+          _ -> %{width: 0, height: 0}
+        end
+      end)
+
+    # Calculate intrinsic container size
+    max_child_width = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> max(acc, size.width) end)
+    total_child_height = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> acc + size.height end)
+    spacing_height = spacing * max(length(children) - 1, 0)
+
+    intrinsic_width = max_child_width + padding * 2
+    intrinsic_height = total_child_height + spacing_height + padding * 2
+
+    {:ok, %{width: intrinsic_width, height: intrinsic_height}}
   end
 
   # Constraint Application
