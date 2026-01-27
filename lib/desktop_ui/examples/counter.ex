@@ -1,37 +1,43 @@
 defmodule DesktopUI.Examples.Counter do
   @moduledoc """
-  A simple counter component demonstrating the Elm Architecture with Jido agents.
+  A polished counter component demonstrating the DesktopUI framework capabilities.
 
   This component serves as a reference implementation for building UI components
   using the DesktopUI.Elm behavior. It demonstrates:
   - State management via init/update callbacks
   - UI tree construction via view callback
   - Signal handling via on_signal callback
-  - Nested widget containers (vbox with hbox)
-  - Button click handling
+  - Layout capabilities (VBox, HBox, spacing, padding)
+  - Interactive button handling
+  - Application quit handling
+
+  ## Layout Structure
+
+  The component uses a VBox as the main container with an HBox for button arrangement:
+
+  ```
+  VBox (spacing: 16, padding: 24)
+  ├── Label "DesktopUI Counter" (title)
+  ├── Label "0" (count display, prominent)
+  ├── HBox (spacing: 8, padding: 8)
+  │   ├── Button "-" (decrement)
+  │   ├── Button "+" (increment, primary action)
+  │   ├── Button "Reset" (reset)
+  │   └── Button "Quit" (quit)
+  └── Label "Press + to increment, - to decrement" (instructions)
+  ```
 
   ## Example
 
       # Start via Runtime
       {:ok, _runtime} = DesktopUI.Runtime.start_link(
         root_component: DesktopUI.Examples.Counter,
-        renderer: DesktopUI.Renderer.Mock,
-        bus: :desktop_ui
+        renderer: DesktopUI.Renderer.SDL2,
+        window_title: "DesktopUI Counter Demo",
+        window_width: 400,
+        window_height: 500
       )
 
-      # Or start directly as an agent
-      {:ok, pid} = Jido.Agent.Server.start_link(
-        agent: DesktopUI.Examples.Counter,
-        name: :counter
-      )
-
-      # Send increment message directly
-      Jido.Agent.Server.send_signal(pid, :increment)
-
-      # Or bridge click events
-      DesktopUI.Runtime.bridge_event(
-        {:sdl_mouseup, x: 100, y: 50, button: :left, target_id: :btn_increment}
-      )
   """
 
   # Note: DesktopUI.Elm behaviour defines init/1 which conflicts with GenServer's init/1.
@@ -40,7 +46,7 @@ defmodule DesktopUI.Examples.Counter do
 
   use DesktopUI.Elm,
     name: "counter",
-    description: "A simple counter component demonstrating the Elm Architecture",
+    description: "A polished counter component demonstrating layout capabilities",
     category: "ui"
 
   # DesktopUI.Widget functions are imported via use DesktopUI.Elm
@@ -74,6 +80,13 @@ defmodule DesktopUI.Examples.Counter do
   end
 
   @impl true
+  def update(:quit, state) do
+    # Quit command - signals the agent to stop
+    # The Elm behaviour handles :quit by returning {:error, :quit}
+    {state, [:quit]}
+  end
+
+  @impl true
   def update(:noop, state) do
     # No-op message for testing
     {state, []}
@@ -81,32 +94,45 @@ defmodule DesktopUI.Examples.Counter do
 
   @impl true
   def view(%{count: count}) do
-    # Build the UI tree:
-    # - VBox container with spacing and padding
-    #   - Title label
-    #   - Count display label
-    #   - HBox container for buttons
-    #     - Increment button (+)
-    #     - Decrement button (-)
-    #     - Reset button
+    # Build the UI tree with enhanced layout:
+    # - Main VBox with generous spacing and padding for visual polish
+    # - Large count display as the focal point
+    # - Centered button row with all actions
+    # - Instructional text at bottom
 
     container(
       :vbox,
       [
-        label("Counter Demo", id: :title),
-        label("Current: #{count}", id: :count_label),
+        # Title
+        label("DesktopUI Counter", id: :title),
+
+        # Count display - prominent, large text representation
+        # Using to_string/1 for clean number display
+        label(to_string(count), id: :count_display),
+
+        # Button row - HBox with centered alignment
+        # Buttons are ordered with primary action (+) in the middle
         container(
           :hbox,
           [
-            button("+", :increment, id: :btn_increment),
             button("-", :decrement, id: :btn_decrement),
-            button("Reset", :reset, id: :btn_reset)
+            button("+", :increment, id: :btn_increment),
+            button("Reset", :reset, id: :btn_reset),
+            button("Quit", :quit, id: :btn_quit)
           ],
-          spacing: 4
-        )
+          # Increased spacing for better touch targets
+          spacing: 8,
+          # Padding around button row for visual separation
+          padding: 8
+        ),
+
+        # Instructions - helpful text for users
+        label("Press + to increment, - to decrement", id: :instructions)
       ],
-      spacing: 8,
-      padding: 16
+      # Generous spacing between main sections for visual hierarchy
+      spacing: 16,
+      # Generous padding around the entire UI for breathing room
+      padding: 24
     )
   end
 
@@ -118,11 +144,13 @@ defmodule DesktopUI.Examples.Counter do
         :btn_increment -> :increment
         :btn_decrement -> :decrement
         :btn_reset -> :reset
+        :btn_quit -> :quit
         _ -> nil
       end
 
     if message do
       # Use handle_ui_signal to process through update/2
+      # This will trigger state change and potentially a :quit command
       DesktopUI.Elm.handle_ui_signal(agent, message)
     else
       # Unknown target_id, ignore

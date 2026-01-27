@@ -208,6 +208,29 @@ defmodule DesktopUI.Graphics do
   end
 
   @doc """
+  Quit SDL2 and clean up resources.
+
+  This should be called when shutting down the application to properly
+  clean up SDL2 resources.
+
+  ## Returns
+
+  - `:ok` - SDL2 quit successfully
+
+  ## Examples
+
+      iex> DesktopUI.Graphics.sdl_init()
+      {:ok, %{}}
+      iex> DesktopUI.Graphics.sdl_quit()
+      :ok
+
+  """
+  @spec sdl_quit() :: :ok
+  def sdl_quit do
+    nif_sdl_quit()
+  end
+
+  @doc """
   Create a new SDL2 window.
 
   ## Parameters
@@ -832,7 +855,7 @@ defmodule DesktopUI.Graphics do
   @spec clear_window(non_neg_integer(), term()) :: :ok | {:error, String.t()}
   def clear_window(window_id, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- Color.normalize(color),
+         {r, g, b, a} <- DesktopUI.Color.normalize(color),
          :ok <- set_render_draw_color(renderer_id, r, g, b, a),
       do: clear_render(renderer_id)
   end
@@ -867,7 +890,7 @@ defmodule DesktopUI.Graphics do
           :ok | {:error, String.t()}
   def draw_rect_on_window(window_id, x, y, w, h, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- Color.normalize(color),
+         {r, g, b, a} <- DesktopUI.Color.normalize(color),
       do: nif_draw_rect(renderer_id, x, y, w, h, {r, g, b, a})
   end
 
@@ -901,7 +924,7 @@ defmodule DesktopUI.Graphics do
           :ok | {:error, String.t()}
   def fill_rect_on_window(window_id, x, y, w, h, color) do
     with {:ok, renderer_id} <- ensure_renderer(window_id),
-         {r, g, b, a} <- Color.normalize(color),
+         {r, g, b, a} <- DesktopUI.Color.normalize(color),
       do: nif_fill_rect(renderer_id, x, y, w, h, {r, g, b, a})
   end
 
@@ -1073,6 +1096,11 @@ defmodule DesktopUI.Graphics do
   # Window management NIF stubs
   @doc false
   def nif_sdl_init do
+    error_not_loaded()
+  end
+
+  @doc false
+  def nif_sdl_quit do
     error_not_loaded()
   end
 

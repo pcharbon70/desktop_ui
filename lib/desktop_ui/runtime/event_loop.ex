@@ -169,7 +169,7 @@ defmodule DesktopUI.Runtime.EventLoop do
 
           {:ok, new_state}
 
-        {:error, _reason} = error ->
+        {:error, _reason} ->
           # SDL2 initialization failed - log and continue without SDL2
           Logger.warning("""
           SDL2 initialization failed, running in headless mode. \
@@ -232,7 +232,7 @@ defmodule DesktopUI.Runtime.EventLoop do
 
   # Initialize SDL2 and create window
   defp initialize_sdl2(state, title, width, height, fullscreen) do
-    with :ok <- Graphics.sdl_init(),
+    with {:ok, _} <- Graphics.sdl_init(),
          {:ok, window_id} <-
            Graphics.create_window(title, width, height,
              resizable: true,
@@ -267,7 +267,7 @@ defmodule DesktopUI.Runtime.EventLoop do
         publish_mouse_released(x, y, button, state.bus)
         poll_all_events(state)
 
-      {:mouse_motion, x, y, _xrel, _yrel} ->
+      {:mouse_motion, _x, _y, _xrel, _yrel} ->
         # Mouse motion - could publish MouseMoved signal later
         poll_all_events(state)
 
