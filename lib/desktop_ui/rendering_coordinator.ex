@@ -11,9 +11,12 @@ defmodule DesktopUI.RenderingCoordinator do
   - Subscribe to component StateChanged signals
   - Track registered components (PID, module, metadata)
   - Call component's view/1 when state changes
+  - Calculate layout for widget trees
+  - Store layouts for hit testing and caching
   - Validate widget trees before rendering
-  - Pass validated trees to the renderer module
+  - Pass validated layouts to the renderer module
   - Handle RenderRequest signals for forced redraws
+  - Handle WindowResized signals for layout recalculation
   - Track render metrics
 
   ## Architecture
@@ -27,18 +30,36 @@ defmodule DesktopUI.RenderingCoordinator do
                                                           ↓
                                                     Call view/1
                                                           ↓
-                                                    Validate widget tree
+                                                    Calculate UI tree version
                                                           ↓
-                                                    Pass to renderer
+                              ┌─────────────────────────┴─────────────────────────┐
+                              │  UI tree changed?                               │
+                              │  Yes → Calculate layout                         │
+                              │  No  → Use cached layout                        │
+                              └─────────────────────────────────────────────┘
+                                                          ↓
+                                                    Store layout in ETS
+                                                          ↓
+                                                    Render with layout
   ```
+
+  ## Window Resize Handling
+
+  When the window is resized, the coordinator:
+  1. Receives WindowResized signal with new dimensions
+  2. Updates stored window bounds
+  3. Triggers layout recalculation for all components
+  4. Components re-render with new layout
 
   ## Usage
 
-  Start the coordinator with a renderer module:
+  Start the coordinator with a renderer module and optional window bounds:
 
       {:ok, pid} = DesktopUI.RenderingCoordinator.start_link(
         renderer: DesktopUI.Renderer.Mock,
         bus: :desktop_ui,
+        window_width: 800,
+        window_height: 600,
         name: :rendering_coordinator
       )
 
@@ -60,6 +81,11 @@ defmodule DesktopUI.RenderingCoordinator do
         pid: component_pid
       )
 
+  Perform hit testing on the current layout:
+
+      DesktopUI.RenderingCoordinator.hit_test("counter_123", 100, 50)
+      #=> {:ok, %{widget_id: :btn_inc, on_click: :increment}}
+
   ## Component Registration
 
   Components must be registered with the coordinator before they will
@@ -67,6 +93,14 @@ defmodule DesktopUI.RenderingCoordinator do
   - `component_id` - Unique identifier for the component
   - `module` - The component module (must implement DesktopUI.Elm)
   - `pid` - The component agent's PID (optional, for RenderRequest support)
+
+  ## Layout Caching
+
+  The coordinator caches layouts based on UI tree version:
+  - First render: Calculates layout and stores in ETS
+  - Subsequent renders with unchanged UI: Reuses cached layout
+  - UI tree changes: Recalculates layout and updates cache
+  - Window resize: Forces layout recalculation for all components
 
   """
 
@@ -93,9 +127,14 @@ defmodule DesktopUI.RenderingCoordinator do
     # Extract options
     bus = Keyword.get(opts, :bus, :desktop_ui)
     renderer = Keyword.get(opts, :renderer, __MODULE__.NoOpRenderer)
+    window_width = Keyword.get(opts, :window_width, 800)
+    window_height = Keyword.get(opts, :window_height, 600)
 
     # Create ETS tables
     ensure_ets_tables(bus: bus, renderer: renderer)
+
+    # Initialize window bounds in ETS
+    :ets.insert(@metrics_table, {:window_bounds, %{width: window_width, height: window_height}})
 
     # Subscribe to all desktop_ui signals
     case Jido.Signal.Bus.subscribe(
@@ -200,6 +239,23 @@ defmodule DesktopUI.RenderingCoordinator do
 
     # Remove from ETS table
     :ets.delete(@components_table, component_id)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(
+        {:signal, %Jido.Signal{type: "desktop_ui.window.resized"} = signal},
+        state
+      ) do
+    width = signal.data.width
+    height = signal.data.height
+
+    # Update stored window bounds
+    :ets.insert(@metrics_table, {:window_bounds, %{width: width, height: height}})
+
+    # Trigger layout recalculation for all registered components
+    trigger_layout_recalculation(state.bus)
 
     {:noreply, state}
   end
@@ -402,7 +458,7 @@ defmodule DesktopUI.RenderingCoordinator do
   end
 
   # Handle a render request signal
-  defp handle_render_request(_state, component_id, _force) do
+  defp handle_render_request(_state, component_id, force) do
     case :ets.lookup(@components_table, component_id) do
       [] ->
         # Component not registered - skip
@@ -413,7 +469,13 @@ defmodule DesktopUI.RenderingCoordinator do
           case get_component_elm_state(component_info.pid) do
             {:ok, elm_state} ->
               renderer = get_metric(:renderer, __MODULE__.NoOpRenderer)
-              render_component(component_id, component_info, elm_state, renderer)
+
+              # If force is true, bypass version checking
+              if force do
+                force_render_component(component_id, component_info, elm_state, renderer)
+              else
+                render_component(component_id, component_info, elm_state, renderer)
+              end
 
             :error ->
               # Couldn't get state - skip but log
@@ -426,6 +488,56 @@ defmodule DesktopUI.RenderingCoordinator do
     end
   end
 
+  # Force render component (bypass version checking)
+  # Used when window is resized or layout needs to be recalculated
+  defp force_render_component(component_id, component_info, elm_state, renderer) do
+    module = component_info.module
+
+    try do
+      widget = apply(module, :view, [elm_state])
+
+      case Widget.validate(widget) do
+        :ok ->
+          available_bounds = get_available_bounds()
+
+          # Always calculate new layout when forced
+          case Layout.calculate(widget, available_bounds) do
+            {:ok, layout} ->
+              :ets.insert(@layouts_table, {{component_id, "current"}, layout})
+              render_widget_with_layout(renderer, component_id, layout)
+              increment_metric(:renders_completed)
+
+              # Update version and timestamp
+              ui_tree_version = calculate_ui_tree_version(widget)
+              updated_info =
+                component_info
+                |> Map.put(:ui_tree_version, ui_tree_version)
+                |> Map.put(:last_rendered, DateTime.utc_now())
+
+              :ets.insert(@components_table, {component_id, updated_info})
+
+              :ok
+
+            {:error, reason} ->
+              Logger.warning("Layout calculation failed for component #{component_id}: #{inspect(reason)}")
+              render_widget(renderer, component_id, widget)
+              increment_metric(:renders_completed)
+              :ok
+          end
+
+        {:error, reason} ->
+          Logger.warning("Widget validation failed for component #{component_id}: #{inspect(reason)}")
+          increment_metric(:renders_failed)
+          :ok
+      end
+    rescue
+      error ->
+        Logger.error("Force render error for component #{component_id}: #{inspect(error)}")
+        increment_metric(:renders_failed)
+        :ok
+    end
+  end
+
   # Render a component by calling its view/1 function
   defp render_component(component_id, component_info, elm_state, renderer) do
     module = component_info.module
@@ -434,47 +546,55 @@ defmodule DesktopUI.RenderingCoordinator do
     try do
       widget = apply(module, :view, [elm_state])
 
+      # Calculate UI tree version for change detection
+      ui_tree_version = calculate_ui_tree_version(widget)
+      current_version = Map.get(component_info, :ui_tree_version, nil)
+
       # Validate the widget tree
       case Widget.validate(widget) do
         :ok ->
-          # Calculate layout for hit testing
-          # Use a large default bounds if window size not available
+          # Get available bounds from ETS (updated on window resize)
           available_bounds = get_available_bounds()
 
-          case Layout.calculate(widget, available_bounds) do
-            {:ok, layout} ->
-              # Store layout for hit testing
-              :ets.insert(@layouts_table, {{component_id, "current"}, layout})
+          # Check if we can reuse cached layout
+          if ui_tree_version == current_version do
+            # UI tree unchanged - try to reuse cached layout
+            case :ets.lookup(@layouts_table, {component_id, "current"}) do
+              [{{_key, "current"}, cached_layout}] ->
+                # Render with cached layout
+                render_widget_with_layout(renderer, component_id, cached_layout)
+                increment_metric(:renders_completed)
 
-              # Render the widget (renderer will calculate layout internally if needed)
-              render_widget(renderer, component_id, widget)
-
-              # Update metrics in ETS
-              increment_metric(:renders_completed)
-
-              :ets.insert(
-                @components_table,
-                {component_id, Map.put(component_info, :last_rendered, DateTime.utc_now())}
-              )
-
-              :ok
-
-            {:error, reason} ->
-              # Layout calculation failed, log and still render
-              Logger.warning("Layout calculation failed for component #{component_id}: #{inspect(reason)}")
-              # Render without storing layout
-              render_widget(renderer, component_id, widget)
-
-              # Update metrics in ETS
-              increment_metric(:renders_completed)
-
-              :ets.insert(
-                @components_table,
-                {component_id, Map.put(component_info, :last_rendered, DateTime.utc_now())}
-              )
-
-              :ok
+              [] ->
+                # No cached layout - must calculate
+                calculate_and_store_layout(
+                  component_id,
+                  widget,
+                  available_bounds,
+                  ui_tree_version,
+                  renderer
+                )
+            end
+          else
+            # UI tree changed - calculate new layout
+            calculate_and_store_layout(
+              component_id,
+              widget,
+              available_bounds,
+              ui_tree_version,
+              renderer
+            )
           end
+
+          # Update component info with new version and timestamp
+          updated_info =
+            component_info
+            |> Map.put(:ui_tree_version, ui_tree_version)
+            |> Map.put(:last_rendered, DateTime.utc_now())
+
+          :ets.insert(@components_table, {component_id, updated_info})
+
+          :ok
 
         {:error, reason} ->
           # Log validation error but don't crash
@@ -561,6 +681,68 @@ defmodule DesktopUI.RenderingCoordinator do
     end
   end
 
+  # Calculate a version/hash of the widget tree for change detection
+  # Uses :erlang.phash2/1 for fast structural comparison
+  defp calculate_ui_tree_version(widget) do
+    :erlang.phash2(widget)
+  end
+
+  # Calculate layout and store it in ETS, then render with the layout
+  defp calculate_and_store_layout(component_id, widget, available_bounds, _ui_tree_version, renderer) do
+    case Layout.calculate(widget, available_bounds) do
+      {:ok, layout} ->
+        # Store layout for hit testing
+        :ets.insert(@layouts_table, {{component_id, "current"}, layout})
+
+        # Render with the calculated layout
+        render_widget_with_layout(renderer, component_id, layout)
+        increment_metric(:renders_completed)
+
+      {:error, reason} ->
+        # Layout calculation failed - fall back to widget rendering
+        Logger.warning("Layout calculation failed for component #{component_id}: #{inspect(reason)}")
+        render_widget(renderer, component_id, widget)
+        increment_metric(:renders_completed)
+    end
+  end
+
+  # Render widget with pre-calculated layout
+  # This is the preferred rendering path as layout is calculated once
+  defp render_widget_with_layout(renderer, component_id, layout) do
+    case renderer do
+      {module, name} when is_atom(module) and is_atom(name) ->
+        # Try render_with_layout first (preferred), fall back to render
+        if function_exported?(module, :render_with_layout, 3) do
+          apply(module, :render_with_layout, [component_id, layout, name])
+        else
+          # Fallback: render with widget extracted from layout
+          widget = layout.widget
+          if function_exported?(module, :render, 3) do
+            apply(module, :render, [component_id, widget, name])
+          else
+            :ok
+          end
+        end
+
+      module when is_atom(module) ->
+        # Try render_with_layout first (preferred), fall back to render
+        if function_exported?(module, :render_with_layout, 2) do
+          apply(module, :render_with_layout, [component_id, layout])
+        else
+          # Fallback: render with widget extracted from layout
+          widget = layout.widget
+          if function_exported?(module, :render, 2) do
+            apply(module, :render, [component_id, widget])
+          else
+            :ok
+          end
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
   # Check if a module implements DesktopUI.Elm behaviour
   defp component_module?(module) when is_atom(module) do
     # Check if module has the required DesktopUI.Elm callbacks
@@ -573,12 +755,37 @@ defmodule DesktopUI.RenderingCoordinator do
   defp component_module?(_), do: false
 
   # Get available bounds for layout calculation
-  # For now, use a large default since we don't have window size tracking
-  # In the future, this should come from the renderer or window state
+  # Reads from ETS where window bounds are stored (updated on resize)
   defp get_available_bounds do
-    # Use a reasonable default - large enough for most UIs
-    # This will be improved when we add window size tracking
-    %{width: 1920, height: 1080}
+    case :ets.lookup(@metrics_table, :window_bounds) do
+      [{:window_bounds, bounds}] ->
+        bounds
+
+      [] ->
+        # Default bounds if not set (fallback)
+        %{width: 800, height: 600}
+    end
+  end
+
+  # Trigger layout recalculation for all registered components
+  # Called when window is resized to ensure all widgets are re-laid out
+  defp trigger_layout_recalculation(bus) do
+    # Get all registered components
+    components = :ets.tab2list(@components_table)
+
+    # Publish RenderRequest signal for each component with force: true
+    Enum.each(components, fn {component_id, _component_info} ->
+      case DesktopUI.Signals.RenderRequest.new(%{
+        component_id: component_id,
+        force: true
+      }) do
+        {:ok, signal} ->
+          Jido.Signal.Bus.publish(bus, [signal])
+
+        {:error, _reason} ->
+          :ok
+      end
+    end)
   end
 
   # No-op renderer for testing/development
