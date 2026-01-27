@@ -109,6 +109,37 @@ defmodule DesktopUI.Renderer.Mock do
   end
 
   @doc """
+  Render a component with a pre-calculated layout.
+
+  This is the preferred rendering path as layout is calculated once
+  by the RenderingCoordinator and then passed to the renderer.
+
+  ## Parameters
+
+  * `component_id` - The component identifier
+  * `layout` - The pre-calculated layout tree
+  * `server_name` - The name of the mock renderer process (default: __MODULE__)
+
+  ## Returns
+
+  * `:ok` - Render was recorded successfully
+
+  ## Examples
+
+      {:ok, layout} = DesktopUI.Layout.calculate(widget, bounds)
+      :ok = DesktopUI.Renderer.Mock.render_with_layout("counter", layout)
+      :ok = DesktopUI.Renderer.Mock.render_with_layout("counter", layout, :my_renderer)
+
+  """
+  def render_with_layout(component_id, layout) do
+    render_with_layout(component_id, layout, __MODULE__)
+  end
+
+  def render_with_layout(component_id, layout, server_name) do
+    GenServer.call(server_name, {:render_with_layout, component_id, layout})
+  end
+
+  @doc """
   Get the list of all renders.
 
   Returns renders in chronological order (oldest first).
@@ -296,6 +327,38 @@ defmodule DesktopUI.Renderer.Mock do
     }
 
     {:reply, validation_result, new_state}
+  end
+
+  @impl true
+  def handle_call({:render_with_layout, component_id, layout}, _from, state) do
+    # Extract widget from layout for compatibility with existing tests
+    widget = layout.widget
+
+    # Validate the widget
+    validation_result = Widget.validate(widget)
+
+    # Store render with both layout and widget for flexibility
+    render = %{
+      component_id: component_id,
+      widget: widget,
+      layout: layout,
+      timestamp: DateTime.utc_now(),
+      validation_result: validation_result
+    }
+
+    new_state = %{
+      state
+      | renders: state.renders ++ [render],
+        render_count: state.render_count + 1,
+        validation_failure_count:
+          if validation_result == :ok do
+            state.validation_failure_count
+          else
+            state.validation_failure_count + 1
+          end
+    }
+
+    {:reply, :ok, new_state}
   end
 
   def handle_call(:get_renders, _from, state) do
