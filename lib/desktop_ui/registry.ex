@@ -83,12 +83,12 @@ defmodule DesktopUI.Registry do
       case :ets.lookup(table, key) do
         [{^key, {pid, _ref}}] -> {:ok, pid}
         [] -> :error
-        other -> :error
+        _other -> :error
       end
-    catch
-      :exit, _ -> :error
     rescue
       ArgumentError -> :error
+    catch
+      :exit, _ -> :error
     end
   end
 
@@ -106,7 +106,7 @@ defmodule DesktopUI.Registry do
   end
 
   @impl true
-  def handle_call({:register, key, pid}, {from_pid, _ref}, state) do
+  def handle_call({:register, key, pid}, {_from_pid, _ref}, state) do
     # Monitor the process being registered
     ref = Process.monitor(pid)
 

@@ -4,6 +4,17 @@ defmodule DesktopUI.Examples.CounterTest do
   alias DesktopUI.Signals
   alias DesktopUI.Elm
 
+  setup_all do
+    # Start the Elixir Registry that Jido.Signal.Bus needs
+    # Jido.Signal.Bus registers itself under the name :Jido.Signal.Registry
+    # Check if it already exists first (may have been started by another test module)
+    case Process.whereis(Jido.Signal.Registry) do
+      nil -> {:ok, _} = Registry.start_link(keys: :unique, name: Jido.Signal.Registry)
+      _ -> :ok
+    end
+    :ok
+  end
+
   describe "init/1" do
     test "initializes with count of 0" do
       {state, commands} = Counter.init([])
@@ -58,6 +69,26 @@ defmodule DesktopUI.Examples.CounterTest do
       assert new_state.count == 0
       assert commands == []
     end
+
+    test "quit returns quit command" do
+      state = %{count: 5}
+      {new_state, commands} = Counter.update(:quit, state)
+
+      # State should be unchanged
+      assert new_state.count == 5
+      # Should return quit command
+      assert commands == [:quit]
+    end
+
+    test "noop returns empty commands" do
+      state = %{count: 3}
+      {new_state, commands} = Counter.update(:noop, state)
+
+      # State should be unchanged
+      assert new_state.count == 3
+      # No commands
+      assert commands == []
+    end
   end
 
   describe "view/1" do
@@ -68,23 +99,26 @@ defmodule DesktopUI.Examples.CounterTest do
       # Root is a vbox container
       assert ui_tree.type == :container
       assert ui_tree.props[:layout] == :vbox
-      assert ui_tree.props[:spacing] == 8
-      assert ui_tree.props[:padding] == 16
+      # Enhanced spacing: 16 (was 8)
+      assert ui_tree.props[:spacing] == 16
+      # Enhanced padding: 24 (was 16)
+      assert ui_tree.props[:padding] == 24
     end
 
     test "displays current count in label" do
       state = %{count: 42}
       ui_tree = Counter.view(state)
 
-      # Find the count label
+      # Find the count display label (id changed from :count_label to :count_display)
       count_label =
         Enum.find(ui_tree.children, fn child ->
-          child.id == :count_label
+          child.id == :count_display
         end)
 
       assert count_label != nil
       assert count_label.type == :label
-      assert count_label.props[:text] == "Current: 42"
+      # Simplified display - just the number (was "Current: 42")
+      assert count_label.props[:text] == "42"
     end
 
     test "displays title label" do
@@ -98,10 +132,11 @@ defmodule DesktopUI.Examples.CounterTest do
 
       assert title_label != nil
       assert title_label.type == :label
-      assert title_label.props[:text] == "Counter Demo"
+      # Enhanced title (was "Counter Demo")
+      assert title_label.props[:text] == "DesktopUI Counter"
     end
 
-    test "has three buttons in hbox" do
+    test "has four buttons in hbox" do
       state = %{count: 0}
       ui_tree = Counter.view(state)
 
@@ -112,8 +147,12 @@ defmodule DesktopUI.Examples.CounterTest do
         end)
 
       assert hbox != nil
-      assert hbox.props[:spacing] == 4
-      assert length(hbox.children) == 3
+      # Enhanced spacing: 8 (was 4)
+      assert hbox.props[:spacing] == 8
+      # Enhanced padding: 8 (new)
+      assert hbox.props[:padding] == 8
+      # Now has 4 buttons (was 3) - added quit button
+      assert length(hbox.children) == 4
     end
 
     test "buttons have correct ids and on_click messages" do
@@ -128,6 +167,7 @@ defmodule DesktopUI.Examples.CounterTest do
       increment_btn = Enum.find(hbox.children, fn child -> child.id == :btn_increment end)
       decrement_btn = Enum.find(hbox.children, fn child -> child.id == :btn_decrement end)
       reset_btn = Enum.find(hbox.children, fn child -> child.id == :btn_reset end)
+      quit_btn = Enum.find(hbox.children, fn child -> child.id == :btn_quit end)
 
       # Increment button
       assert increment_btn != nil
@@ -146,6 +186,26 @@ defmodule DesktopUI.Examples.CounterTest do
       assert reset_btn.type == :button
       assert reset_btn.props[:text] == "Reset"
       assert reset_btn.props[:on_click] == :reset
+
+      # Quit button (new)
+      assert quit_btn != nil
+      assert quit_btn.type == :button
+      assert quit_btn.props[:text] == "Quit"
+      assert quit_btn.props[:on_click] == :quit
+    end
+
+    test "has instructions label" do
+      state = %{count: 0}
+      ui_tree = Counter.view(state)
+
+      instructions_label =
+        Enum.find(ui_tree.children, fn child ->
+          child.id == :instructions
+        end)
+
+      assert instructions_label != nil
+      assert instructions_label.type == :label
+      assert instructions_label.props[:text] == "Press + to increment, - to decrement"
     end
   end
 
@@ -223,6 +283,25 @@ defmodule DesktopUI.Examples.CounterTest do
 
       elm_state = Elm.get_elm_state(updated_agent)
       assert elm_state.count == 0
+    end
+
+    test "clicked signal with btn_quit returns quit command", %{agent: agent} do
+      # Initialize state first
+      {:ok, agent} = Elm.handle_ui_signal(agent, :noop)
+
+      {:ok, signal} =
+        Signals.Clicked.new(
+          %{
+            target_id: :btn_quit,
+            button: :left
+          },
+          source: "/test"
+        )
+
+      # The quit signal should return {:error, :quit}
+      result = Counter.on_signal(agent, signal)
+
+      assert result == {:error, :quit}
     end
 
     test "clicked signal with unknown target_id is ignored", %{agent: agent} do

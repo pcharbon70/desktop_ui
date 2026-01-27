@@ -321,6 +321,11 @@ defmodule DesktopUI.Runtime do
   end
 
   @impl true
+  def handle_call(_msg, _from, state) do
+    {:reply, {:error, :unknown_request}, state}
+  end
+
+  @impl true
   def handle_info({:register_root_component}, state) do
     # Register root component with the Registry
     # Find the Jido.Agent.Server child's PID from the supervisor

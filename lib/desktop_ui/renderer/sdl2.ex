@@ -102,6 +102,7 @@ defmodule DesktopUI.Renderer.SDL2 do
 
   """
   @spec init(non_neg_integer()) :: {:ok, t()} | {:error, String.t()}
+  @impl true
   def init(window_id) when is_integer(window_id) do
     with {:ok, {width, height}} <- Graphics.get_window_size(window_id) do
       renderer = %__MODULE__{
@@ -146,6 +147,7 @@ defmodule DesktopUI.Renderer.SDL2 do
 
   """
   @spec render(t(), Layout.t()) :: :ok | {:error, String.t()}
+  @impl true
   def render(%__MODULE__{} = renderer, %Layout{} = layout) do
     with :ok <- Graphics.clear_window(renderer.window_id, @background_color),
        :ok <- render_layout(renderer, layout),
@@ -269,6 +271,7 @@ defmodule DesktopUI.Renderer.SDL2 do
 
   """
   @spec cleanup(t()) :: :ok
+  @impl true
   def cleanup(%__MODULE__{}) do
     # No renderer-specific resources to clean up
     # Graphics handles window/renderer cleanup

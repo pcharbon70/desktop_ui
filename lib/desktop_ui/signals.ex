@@ -36,20 +36,20 @@ defmodule DesktopUI.Signals do
       })
   """
 
-  @doc """
-  Signal published when a component's state changes.
-
-  Component agents automatically publish this signal after their
-  `update/2` callback returns a new state. The RenderingCoordinator
-  subscribes to these signals to trigger re-renders.
-
-  ## Fields
-
-  - `component_id` - Unique identifier for the component (required)
-  - `old_state` - The state before the update (required)
-  - `new_state` - The state after the update (required)
-  """
   defmodule StateChanged do
+    @moduledoc """
+    Signal published when a component's state changes.
+
+    Component agents automatically publish this signal after their
+    `update/2` callback returns a new state. The RenderingCoordinator
+    subscribes to these signals to trigger re-renders.
+
+    ## Fields
+
+    - `component_id` - Unique identifier for the component (required)
+    - `old_state` - The state before the update (required)
+    - `new_state` - The state after the update (required)
+    """
     use Jido.Signal,
       type: "desktop_ui.state.changed",
       default_source: "/desktop_ui/components",
@@ -72,21 +72,21 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published when a mouse click occurs.
-
-  The Runtime event bridge publishes this signal after receiving
-  SDL mouse button events. Component agents can handle these
-  signals via their `on_signal/2` callback.
-
-  ## Fields
-
-  - `target_id` - The widget that was clicked (optional, determined by hit testing)
-  - `button` - Which mouse button was clicked (:left, :middle, :right)
-  - `x` - X coordinate of the click (optional)
-  - `y` - Y coordinate of the click (optional)
-  """
   defmodule Clicked do
+    @moduledoc """
+    Signal published when a mouse click occurs.
+
+    The Runtime event bridge publishes this signal after receiving
+    SDL mouse button events. Component agents can handle these
+    signals via their `on_signal/2` callback.
+
+    ## Fields
+
+    - `target_id` - The widget that was clicked (optional, determined by hit testing)
+    - `button` - Which mouse button was clicked (:left, :middle, :right)
+    - `x` - X coordinate of the click (optional)
+    - `y` - Y coordinate of the click (optional)
+    """
     use Jido.Signal,
       type: "desktop_ui.ui.clicked",
       default_source: "/desktop_ui/input",
@@ -115,21 +115,21 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published when a mouse button is pressed.
-
-  The Runtime event bridge publishes this signal after receiving
-  SDL mouse button events. Component agents can handle these
-  signals via their `on_signal/2` callback.
-
-  ## Fields
-
-  - `target_id` - The widget that was pressed (optional, determined by hit testing)
-  - `button` - Which mouse button was pressed (:left, :middle, :right)
-  - `x` - X coordinate of the press (optional)
-  - `y` - Y coordinate of the press (optional)
-  """
   defmodule MousePressed do
+    @moduledoc """
+    Signal published when a mouse button is pressed.
+
+    The Runtime event bridge publishes this signal after receiving
+    SDL mouse button events. Component agents can handle these
+    signals via their `on_signal/2` callback.
+
+    ## Fields
+
+    - `target_id` - The widget that was pressed (optional, determined by hit testing)
+    - `button` - Which mouse button was pressed (:left, :middle, :right)
+    - `x` - X coordinate of the press (optional)
+    - `y` - Y coordinate of the press (optional)
+    """
     use Jido.Signal,
       type: "desktop_ui.ui.mouse_pressed",
       default_source: "/desktop_ui/input",
@@ -158,19 +158,62 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published when a keyboard key is pressed.
+  defmodule MouseReleased do
+    @moduledoc """
+    Signal published when a mouse button is released.
 
-  The Runtime event bridge publishes this signal after receiving
-  SDL keyboard events. Component agents can handle these
-  signals via their `on_signal/2` callback.
+    The Runtime event bridge publishes this signal after receiving
+    SDL mouse button events. Component agents can handle these
+    signals via their `on_signal/2` callback.
 
-  ## Fields
+    ## Fields
 
-  - `key` - The key that was pressed (required)
-  - `modifiers` - List of modifier keys that were held (:shift, :ctrl, :alt, :meta)
-  """
+    - `target_id` - The widget that was released (optional, determined by hit testing)
+    - `button` - Which mouse button was released (:left, :middle, :right)
+    - `x` - X coordinate of the release (optional)
+    - `y` - Y coordinate of the release (optional)
+    """
+    use Jido.Signal,
+      type: "desktop_ui.ui.mouse_released",
+      default_source: "/desktop_ui/input",
+      schema: [
+        target_id: [
+          type: :atom,
+          required: false,
+          doc: "The widget that was released (determined by hit testing)"
+        ],
+        button: [
+          type: {:in, [:left, :middle, :right]},
+          required: true,
+          default: :left,
+          doc: "Which mouse button was released"
+        ],
+        x: [
+          type: :integer,
+          required: false,
+          doc: "X coordinate of the release"
+        ],
+        y: [
+          type: :integer,
+          required: false,
+          doc: "Y coordinate of the release"
+        ]
+      ]
+  end
+
   defmodule KeyPressed do
+    @moduledoc """
+    Signal published when a keyboard key is pressed.
+
+    The Runtime event bridge publishes this signal after receiving
+    SDL keyboard events. Component agents can handle these
+    signals via their `on_signal/2` callback.
+
+    ## Fields
+
+    - `key` - The key that was pressed (required)
+    - `modifiers` - List of modifier keys that were held (:shift, :ctrl, :alt, :meta)
+    """
     use Jido.Signal,
       type: "desktop_ui.ui.key_pressed",
       default_source: "/desktop_ui/input",
@@ -189,19 +232,19 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published when a keyboard key is released.
-
-  The Runtime event bridge publishes this signal after receiving
-  SDL keyboard events. Component agents can handle these
-  signals via their `on_signal/2` callback.
-
-  ## Fields
-
-  - `key` - The key that was released (required)
-  - `modifiers` - List of modifier keys that were held (:shift, :ctrl, :alt, :meta)
-  """
   defmodule KeyReleased do
+    @moduledoc """
+    Signal published when a keyboard key is released.
+
+    The Runtime event bridge publishes this signal after receiving
+    SDL keyboard events. Component agents can handle these
+    signals via their `on_signal/2` callback.
+
+    ## Fields
+
+    - `key` - The key that was released (required)
+    - `modifiers` - List of modifier keys that were held (:shift, :ctrl, :alt, :meta)
+    """
     use Jido.Signal,
       type: "desktop_ui.ui.key_released",
       default_source: "/desktop_ui/input",
@@ -220,19 +263,19 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published to request a render of a component.
-
-  This signal can be published to force a re-render of a specific
-  component, even if its state hasn't changed. The RenderingCoordinator
-  handles these signals by calling the component's `view/1` function.
-
-  ## Fields
-
-  - `component_id` - The component to render (required)
-  - `force` - Whether to force render even if state unchanged (default: false)
-  """
   defmodule RenderRequest do
+    @moduledoc """
+    Signal published to request a render of a component.
+
+    This signal can be published to force a re-render of a specific
+    component, even if its state hasn't changed. The RenderingCoordinator
+    handles these signals by calling the component's `view/1` function.
+
+    ## Fields
+
+    - `component_id` - The component to render (required)
+    - `force` - Whether to force render even if state unchanged (default: false)
+    """
     use Jido.Signal,
       type: "desktop_ui.render.request",
       default_source: "/desktop_ui/coordinator",
@@ -251,19 +294,19 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published to register a component with the RenderingCoordinator.
-
-  Components must be registered before they will be rendered on state changes.
-  This signal should be published when a component agent starts.
-
-  ## Fields
-
-  - `component_id` - Unique identifier for the component (required)
-  - `module` - The component module name (required)
-  - `pid` - The component agent's PID (optional)
-  """
   defmodule ComponentRegister do
+    @moduledoc """
+    Signal published to register a component with the RenderingCoordinator.
+
+    Components must be registered before they will be rendered on state changes.
+    This signal should be published when a component agent starts.
+
+    ## Fields
+
+    - `component_id` - Unique identifier for the component (required)
+    - `module` - The component module name (required)
+    - `pid` - The component agent's PID (optional)
+    """
     use Jido.Signal,
       type: "desktop_ui.component.register",
       default_source: "/desktop_ui/components",
@@ -286,14 +329,14 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published to unregister a component from the RenderingCoordinator.
-
-  ## Fields
-
-  - `component_id` - Unique identifier for the component (required)
-  """
   defmodule ComponentUnregister do
+    @moduledoc """
+    Signal published to unregister a component from the RenderingCoordinator.
+
+    ## Fields
+
+    - `component_id` - Unique identifier for the component (required)
+    """
     use Jido.Signal,
       type: "desktop_ui.component.unregister",
       default_source: "/desktop_ui/components",
@@ -306,19 +349,19 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published when the window is resized.
-
-  The Runtime publishes this signal when it receives an SDL window
-  resize event. The RenderingCoordinator uses this to trigger
-  layout recalculation.
-
-  ## Fields
-
-  - `width` - New window width in pixels (required)
-  - `height` - New window height in pixels (required)
-  """
   defmodule WindowResized do
+    @moduledoc """
+    Signal published when the window is resized.
+
+    The Runtime publishes this signal when it receives an SDL window
+    resize event. The RenderingCoordinator uses this to trigger
+    layout recalculation.
+
+    ## Fields
+
+    - `width` - New window width in pixels (required)
+    - `height` - New window height in pixels (required)
+    """
     use Jido.Signal,
       type: "desktop_ui.window.resized",
       default_source: "/desktop_ui/runtime",
@@ -336,17 +379,17 @@ defmodule DesktopUI.Signals do
       ]
   end
 
-  @doc """
-  Signal published when the application should quit.
-
-  The Runtime publishes this signal when it receives an SDL quit event.
-  Components can handle this signal to perform cleanup before shutdown.
-
-  ## Fields
-
-  No additional fields beyond the standard signal attributes.
-  """
   defmodule Quit do
+    @moduledoc """
+    Signal published when the application should quit.
+
+    The Runtime publishes this signal when it receives an SDL quit event.
+    Components can handle this signal to perform cleanup before shutdown.
+
+    ## Fields
+
+    No additional fields beyond the standard signal attributes.
+    """
     use Jido.Signal,
       type: "desktop_ui.app.quit",
       default_source: "/desktop_ui/runtime",
