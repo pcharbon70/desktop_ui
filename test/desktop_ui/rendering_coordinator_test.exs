@@ -273,9 +273,9 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       # Verify initialization is complete
       assert_coordinator_ready(pid)
 
-      # Verify renderer is stored
-      renderer = RenderingCoordinator.get_metric(:renderer)
-      assert renderer == {MockRenderer, :test_custom_renderer}
+      # Verify renderer is stored in state (not ETS, since renderer is process-specific)
+      state = :sys.get_state(pid)
+      assert state.renderer == {MockRenderer, :test_custom_renderer}
 
       # Cleanup
       GenServer.stop(pid)
@@ -815,6 +815,182 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       # Cleanup
       GenServer.stop(pid)
       GenServer.stop(:test_error_renderer)
+      GenServer.stop(bus)
+    end
+  end
+
+  describe "window bounds validation" do
+    test "accepts valid window dimensions" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_bus)
+
+      # Start coordinator with valid dimensions
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_bus,
+          window_width: 1920,
+          window_height: 1080
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify bounds were stored correctly
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 1920
+      assert bounds.height == 1080
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps width below minimum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_min_bus)
+
+      # Start coordinator with width below minimum
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_min_bus,
+          window_width: 50,
+          window_height: 600
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify width was clamped to minimum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 100
+      assert bounds.height == 600
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps height below minimum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_min_h_bus)
+
+      # Start coordinator with height below minimum
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_min_h_bus,
+          window_width: 800,
+          window_height: 50
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify height was clamped to minimum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 800
+      assert bounds.height == 100
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps width above maximum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_max_bus)
+
+      # Start coordinator with width above maximum (8K)
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_max_bus,
+          window_width: 10_000,
+          window_height: 1080
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify width was clamped to maximum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 7680
+      assert bounds.height == 1080
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps height above maximum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_max_h_bus)
+
+      # Start coordinator with height above maximum (8K)
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_max_h_bus,
+          window_width: 1920,
+          window_height: 10_000
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify height was clamped to maximum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 1920
+      assert bounds.height == 4320
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "accepts 8K resolution at maximum bounds" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_8k_bus)
+
+      # 8K resolution is 7680x4320
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_8k_bus,
+          window_width: 7680,
+          window_height: 4320
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify bounds were stored correctly
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 7680
+      assert bounds.height == 4320
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "accepts minimum bounds" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_min_both_bus)
+
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_min_both_bus,
+          window_width: 100,
+          window_height: 100
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify bounds were stored correctly
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 100
+      assert bounds.height == 100
+
+      # Cleanup
+      GenServer.stop(pid)
       GenServer.stop(bus)
     end
   end

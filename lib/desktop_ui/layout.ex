@@ -27,6 +27,13 @@ defmodule DesktopUI.Layout do
 
   """
 
+  # Hot path functions - inline for performance
+  @compile {:inline, contains?: 3}
+  @compile {:inline, right: 1}
+  @compile {:inline, bottom: 1}
+  @compile {:inline, center: 1}
+  @compile {:inline, area: 1}
+
   defstruct [:x, :y, :width, :height, :widget]
 
   @type t :: %__MODULE__{
@@ -166,6 +173,7 @@ defmodule DesktopUI.Layout do
   - `layout` - The layout tree to search
   - `x` - X coordinate to test
   - `y` - Y coordinate to test
+  - `max_depth` - Maximum recursion depth (default: 500)
 
   ## Examples
 
@@ -177,20 +185,26 @@ defmodule DesktopUI.Layout do
       #=> nil
 
   """
-  @spec hit_test(t(), non_neg_integer(), non_neg_integer()) ::
+  @spec hit_test(t(), non_neg_integer(), non_neg_integer(), pos_integer() | nil) ::
     {:ok, %{widget_id: atom(), on_click: term()}} | nil
-  def hit_test(%__MODULE__{} = layout, x, y) do
-    hit_test_recursive(layout, x, y)
+  def hit_test(%__MODULE__{} = layout, x, y, max_depth \\ 500) do
+    hit_test_recursive(layout, x, y, max_depth)
   end
 
   # Recursive hit test implementation
-  defp hit_test_recursive(%__MODULE__{} = layout, x, y) do
+  # SECURITY: Max depth prevents stack overflow from deeply nested layouts
+  defp hit_test_recursive(%__MODULE__{} = _layout, _x, _y, max_depth) when max_depth <= 0 do
+    # Max depth exceeded - return nil to prevent stack overflow
+    nil
+  end
+
+  defp hit_test_recursive(%__MODULE__{} = layout, x, y, max_depth) do
     if contains?(layout, x, y) do
       # Point is within this layout's bounds
       case layout.widget do
         %Widget{type: :container} ->
           # For containers, search children first (reverse order for z-order)
-          case search_children_for_hit(layout, x, y) do
+          case search_children_for_hit(layout, x, y, max_depth - 1) do
             nil -> container_widget_info(layout.widget)
             result -> result
           end
@@ -206,7 +220,7 @@ defmodule DesktopUI.Layout do
         %Widget{type: nil, children: children} when is_list(children) ->
           # Synthetic widget from layout calculation (nested container)
           # Search children for hit
-          search_synthetic_children(children, x, y)
+          search_synthetic_children(children, x, y, max_depth - 1)
 
         %Widget{type: nil} ->
           # Other synthetic widgets without type - treat as non-interactive
@@ -219,32 +233,32 @@ defmodule DesktopUI.Layout do
   end
 
   # Search children for hit (reverse order for z-order: topmost first)
-  defp search_children_for_hit(%__MODULE__{widget: %Widget{children: children}}, x, y) when is_list(children) do
+  defp search_children_for_hit(%__MODULE__{widget: %Widget{children: children}}, x, y, max_depth) when is_list(children) do
     children
     |> Enum.reverse()
     |> Enum.reduce_while(nil, fn child_layout, _acc ->
-      case hit_test_recursive(child_layout, x, y) do
+      case hit_test_recursive(child_layout, x, y, max_depth) do
         nil -> {:cont, nil}
         result -> {:halt, result}
       end
     end)
   end
 
-  defp search_children_for_hit(%__MODULE__{}, _x, _y), do: nil
+  defp search_children_for_hit(%__MODULE__{}, _x, _y, _max_depth), do: nil
 
   # Search synthetic children (from nested container layouts)
-  defp search_synthetic_children(children, x, y) when is_list(children) do
+  defp search_synthetic_children(children, x, y, max_depth) when is_list(children) do
     children
     |> Enum.reverse()
     |> Enum.reduce_while(nil, fn child_layout, _acc ->
-      case hit_test_recursive(child_layout, x, y) do
+      case hit_test_recursive(child_layout, x, y, max_depth) do
         nil -> {:cont, nil}
         result -> {:halt, result}
       end
     end)
   end
 
-  defp search_synthetic_children(_, _x, _y), do: nil
+  defp search_synthetic_children(_, _x, _y, _max_depth), do: nil
 
   # Get widget info for button widgets
   defp button_widget_info(%Widget{id: id, props: props}) do

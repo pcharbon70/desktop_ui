@@ -5,7 +5,7 @@ defmodule DesktopUI.Layout.Calculate do
   Transforms widget trees into laid-out trees with explicit bounds.
   """
 
-  alias DesktopUI.{Layout, Layout.Context, Widget}
+  alias DesktopUI.{Layout, Layout.Context, Layout.Box, Widget}
 
   @type layout_result :: {:ok, Layout.t()} | {:error, String.t()}
 
@@ -44,11 +44,11 @@ defmodule DesktopUI.Layout.Calculate do
   end
 
   def calculate(%Widget{type: type}, _available_bounds, _context) do
-    {:error, "unknown widget type: #{inspect(type)}"}
+    {:error, "Unknown widget type: #{inspect(type)}"}
   end
 
   def calculate(_other, _available_bounds, _context) do
-    {:error, "not a widget"}
+    {:error, "Not a widget"}
   end
 
   # Leaf Widget Layout
@@ -119,31 +119,22 @@ defmodule DesktopUI.Layout.Calculate do
   # VBox Layout Algorithm
 
   defp layout_vbox(%Widget{children: children, props: props}, available_bounds, context) do
-    spacing = Keyword.get(props, :spacing, 0)
-    padding = Keyword.get(props, :padding, 0)
-    align = Keyword.get(props, :align, :left)
+    # Extract and normalize box props using Box helper
+    box_props = Box.extract_props(props)
 
     # Calculate available space for children (after padding)
-    padding_total = padding * 2
-    child_available_width = max(available_bounds.width - padding_total, 0)
-    _child_available_height = max(available_bounds.height - padding_total, 0)
+    child_available_width = max(available_bounds.width - box_props.padding_total, 0)
 
-    # Calculate intrinsic size for all children
-    child_intrinsic_sizes =
-      Enum.map(children, fn child ->
-        case intrinsic_size(child, context) do
-          {:ok, size} -> size
-          _ -> %{width: 0, height: 0}
-        end
-      end)
+    # Calculate intrinsic size for all children using Box helper
+    child_intrinsic_sizes = Box.child_intrinsic_sizes(children, context)
 
     # Calculate intrinsic container size
     max_child_width = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> max(acc, size.width) end)
     total_child_height = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> acc + size.height end)
-    spacing_height = spacing * max(length(children) - 1, 0)
+    spacing_height = box_props.spacing * max(length(children) - 1, 0)
 
-    intrinsic_width = max_child_width + padding_total
-    intrinsic_height = total_child_height + spacing_height + padding_total
+    intrinsic_width = max_child_width + box_props.padding_total
+    intrinsic_height = total_child_height + spacing_height + box_props.padding_total
 
     intrinsic_size = %{width: intrinsic_width, height: intrinsic_height}
 
@@ -151,32 +142,32 @@ defmodule DesktopUI.Layout.Calculate do
     with {:ok, constrained_size} <- apply_constraints(intrinsic_size, context.constraints, available_bounds),
          {:ok, position} <- calculate_position(%Widget{props: props}, constrained_size, context) do
 
-      # Layout each child
+      # Layout each child (child_available_width for sizing, available_bounds.width for alignment)
       child_layouts =
         layout_vbox_children(
           children,
           child_intrinsic_sizes,
-          spacing,
-          padding,
+          box_props.spacing,
+          box_props.padding,
           child_available_width,
-          align,
+          available_bounds.width,
+          box_props.align,
           context
         )
 
-      # Create container layout
-      container_layout = Layout.new(
+      # Create container layout using Box helper
+      {:ok, Box.container_layout(
         position.x,
         position.y,
         constrained_size.width,
         constrained_size.height,
-        %Widget{children: child_layouts, props: props}
-      )
-
-      {:ok, container_layout}
+        child_layouts,
+        props
+      )}
     end
   end
 
-  defp layout_vbox_children(children, intrinsic_sizes, spacing, padding, available_width, align, context) do
+  defp layout_vbox_children(children, intrinsic_sizes, spacing, padding, child_layout_width, container_width, align, context) do
     # Layout each child vertically, accumulating y position
     {layouts, _y_offset} =
       Enum.map_reduce(
@@ -184,13 +175,14 @@ defmodule DesktopUI.Layout.Calculate do
         padding,
         fn {child, _intrinsic_size}, y_offset ->
           # Calculate child's layout - give it sufficient height
-          # Use a large value for available height since VBox doesn't constrain child height
-          child_available_bounds = %{width: available_width, height: 10000}
+          # Use child_layout_width (accounts for padding) for child sizing
+          child_available_bounds = %{width: child_layout_width, height: 10000}
 
           case calculate(child, child_available_bounds, context) do
             {:ok, child_layout} ->
-              # Calculate x position based on alignment
-              x_offset = calculate_vbox_x_alignment(child_layout.width, available_width, align, padding)
+              # Calculate x position using Box helper
+              # Use container_width (full width) for alignment
+              x_offset = Box.x_alignment(child_layout.width, container_width, align, padding)
               positioned_layout = %{child_layout | x: x_offset, y: y_offset}
 
               # Next y position = current y + child height + spacing
@@ -199,9 +191,8 @@ defmodule DesktopUI.Layout.Calculate do
               {positioned_layout, new_y_offset}
 
             {:error, _reason} ->
-              # Return a minimal layout for failed children (use 1x1 to pass guard)
-              failed_layout = Layout.new(padding, y_offset, 1, 1, child)
-              {failed_layout, y_offset}
+              # Return failed layout using Box helper
+              {Box.failed_layout(padding, y_offset, child), y_offset}
           end
         end
       )
@@ -209,46 +200,25 @@ defmodule DesktopUI.Layout.Calculate do
     layouts
   end
 
-  defp calculate_vbox_x_alignment(_child_width, _available_width, :left, padding) do
-    padding
-  end
-
-  defp calculate_vbox_x_alignment(child_width, available_width, :center, padding) do
-    padding + div(max(available_width - child_width, 0), 2)
-  end
-
-  defp calculate_vbox_x_alignment(child_width, available_width, :right, padding) do
-    padding + max(available_width - child_width, 0)
-  end
-
   # HBox Layout Algorithm
 
   defp layout_hbox(%Widget{children: children, props: props}, available_bounds, context) do
-    spacing = Keyword.get(props, :spacing, 0)
-    padding = Keyword.get(props, :padding, 0)
-    align = Keyword.get(props, :align, :top)
+    # Extract and normalize box props using Box helper
+    box_props = Box.extract_props(props)
 
     # Calculate available space for children (after padding)
-    padding_total = padding * 2
-    _child_available_width = max(available_bounds.width - padding_total, 0)
-    child_available_height = max(available_bounds.height - padding_total, 0)
+    child_available_height = max(available_bounds.height - box_props.padding_total, 0)
 
-    # Calculate intrinsic size for all children
-    child_intrinsic_sizes =
-      Enum.map(children, fn child ->
-        case intrinsic_size(child, context) do
-          {:ok, size} -> size
-          _ -> %{width: 0, height: 0}
-        end
-      end)
+    # Calculate intrinsic size for all children using Box helper
+    child_intrinsic_sizes = Box.child_intrinsic_sizes(children, context)
 
     # Calculate intrinsic container size (swapped width/height from VBox)
     total_child_width = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> acc + size.width end)
     max_child_height = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> max(acc, size.height) end)
-    spacing_width = spacing * max(length(children) - 1, 0)
+    spacing_width = box_props.spacing * max(length(children) - 1, 0)
 
-    intrinsic_width = total_child_width + spacing_width + padding_total
-    intrinsic_height = max_child_height + padding_total
+    intrinsic_width = total_child_width + spacing_width + box_props.padding_total
+    intrinsic_height = max_child_height + box_props.padding_total
 
     intrinsic_size = %{width: intrinsic_width, height: intrinsic_height}
 
@@ -256,32 +226,32 @@ defmodule DesktopUI.Layout.Calculate do
     with {:ok, constrained_size} <- apply_constraints(intrinsic_size, context.constraints, available_bounds),
          {:ok, position} <- calculate_position(%Widget{props: props}, constrained_size, context) do
 
-      # Layout each child
+      # Layout each child (child_available_height for sizing, available_bounds.height for alignment)
       child_layouts =
         layout_hbox_children(
           children,
           child_intrinsic_sizes,
-          spacing,
-          padding,
+          box_props.spacing,
+          box_props.padding,
           child_available_height,
-          align,
+          available_bounds.height,
+          box_props.align,
           context
         )
 
-      # Create container layout
-      container_layout = Layout.new(
+      # Create container layout using Box helper
+      {:ok, Box.container_layout(
         position.x,
         position.y,
         constrained_size.width,
         constrained_size.height,
-        %Widget{children: child_layouts, props: props}
-      )
-
-      {:ok, container_layout}
+        child_layouts,
+        props
+      )}
     end
   end
 
-  defp layout_hbox_children(children, intrinsic_sizes, spacing, padding, available_height, align, context) do
+  defp layout_hbox_children(children, intrinsic_sizes, spacing, padding, child_layout_height, container_height, align, context) do
     # Layout each child horizontally, accumulating x position
     {layouts, _x_offset} =
       Enum.map_reduce(
@@ -289,13 +259,14 @@ defmodule DesktopUI.Layout.Calculate do
         padding,
         fn {child, _intrinsic_size}, x_offset ->
           # Calculate child's layout - give it sufficient width
-          # Use a large value for available width since HBox doesn't constrain child width
-          child_available_bounds = %{width: 10000, height: available_height}
+          # Use child_layout_height (accounts for padding) for child sizing
+          child_available_bounds = %{width: 10000, height: child_layout_height}
 
           case calculate(child, child_available_bounds, context) do
             {:ok, child_layout} ->
-              # Calculate y position based on alignment
-              y_offset = calculate_hbox_y_alignment(child_layout.height, available_height, align, padding)
+              # Calculate y position using Box helper
+              # Use container_height (full height) for alignment
+              y_offset = Box.y_alignment(child_layout.height, container_height, align, padding)
               positioned_layout = %{child_layout | x: x_offset, y: y_offset}
 
               # Next x position = current x + child width + spacing
@@ -304,26 +275,13 @@ defmodule DesktopUI.Layout.Calculate do
               {positioned_layout, new_x_offset}
 
             {:error, _reason} ->
-              # Return a minimal layout for failed children (use 1x1 to pass guard)
-              failed_layout = Layout.new(x_offset, padding, 1, 1, child)
-              {failed_layout, x_offset}
+              # Return failed layout using Box helper
+              {Box.failed_layout(x_offset, padding, child), x_offset}
           end
         end
       )
 
     layouts
-  end
-
-  defp calculate_hbox_y_alignment(_child_height, _available_height, :top, padding) do
-    padding
-  end
-
-  defp calculate_hbox_y_alignment(child_height, available_height, :center, padding) do
-    padding + div(max(available_height - child_height, 0), 2)
-  end
-
-  defp calculate_hbox_y_alignment(child_height, available_height, :bottom, padding) do
-    padding + max(available_height - child_height, 0)
   end
 
   # Intrinsic Size Calculation
@@ -382,50 +340,32 @@ defmodule DesktopUI.Layout.Calculate do
 
   # VBox intrinsic size calculation
   defp vbox_intrinsic_size(children, props, context) do
-    spacing = Keyword.get(props, :spacing, 0)
-    padding = Keyword.get(props, :padding, 0)
-
-    # Calculate intrinsic size for all children
-    child_intrinsic_sizes =
-      Enum.map(children, fn child ->
-        case intrinsic_size(child, context) do
-          {:ok, size} -> size
-          _ -> %{width: 0, height: 0}
-        end
-      end)
+    box_props = Box.extract_props(props)
+    child_intrinsic_sizes = Box.child_intrinsic_sizes(children, context)
 
     # Calculate intrinsic container size
     max_child_width = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> max(acc, size.width) end)
     total_child_height = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> acc + size.height end)
-    spacing_height = spacing * max(length(children) - 1, 0)
+    spacing_height = box_props.spacing * max(length(children) - 1, 0)
 
-    intrinsic_width = max_child_width + padding * 2
-    intrinsic_height = total_child_height + spacing_height + padding * 2
+    intrinsic_width = max_child_width + box_props.padding_total
+    intrinsic_height = total_child_height + spacing_height + box_props.padding_total
 
     {:ok, %{width: intrinsic_width, height: intrinsic_height}}
   end
 
   # HBox intrinsic size calculation
   defp hbox_intrinsic_size(children, props, context) do
-    spacing = Keyword.get(props, :spacing, 0)
-    padding = Keyword.get(props, :padding, 0)
-
-    # Calculate intrinsic size for all children
-    child_intrinsic_sizes =
-      Enum.map(children, fn child ->
-        case intrinsic_size(child, context) do
-          {:ok, size} -> size
-          _ -> %{width: 0, height: 0}
-        end
-      end)
+    box_props = Box.extract_props(props)
+    child_intrinsic_sizes = Box.child_intrinsic_sizes(children, context)
 
     # Calculate intrinsic container size (swapped width/height from VBox)
     total_child_width = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> acc + size.width end)
     max_child_height = Enum.reduce(child_intrinsic_sizes, 0, fn size, acc -> max(acc, size.height) end)
-    spacing_width = spacing * max(length(children) - 1, 0)
+    spacing_width = box_props.spacing * max(length(children) - 1, 0)
 
-    intrinsic_width = total_child_width + spacing_width + padding * 2
-    intrinsic_height = max_child_height + padding * 2
+    intrinsic_width = total_child_width + spacing_width + box_props.padding_total
+    intrinsic_height = max_child_height + box_props.padding_total
 
     {:ok, %{width: intrinsic_width, height: intrinsic_height}}
   end
@@ -448,7 +388,7 @@ defmodule DesktopUI.Layout.Calculate do
     if width > 0 and height > 0 do
       {:ok, %{width: width, height: height}}
     else
-      {:error, "calculated size is invalid: width=#{width}, height=#{height}"}
+      {:error, "Calculated size is invalid: width=#{width}, height=#{height}"}
     end
   end
 

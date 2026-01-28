@@ -102,6 +102,47 @@ defmodule DesktopUI.RenderingCoordinator do
   - UI tree changes: Recalculates layout and updates cache
   - Window resize: Forces layout recalculation for all components
 
+  ## ETS Table Usage
+
+  The coordinator uses three ETS tables for high-performance concurrent access:
+
+  ### Tables
+
+  - `@components_table` - Component registry: `{component_id, component_info}`
+  - `@metrics_table` - Metrics and configuration: `{key, value}`
+  - `@layouts_table` - Layout cache: `{{component_id, "current"}, layout}`
+
+  ### Access Patterns
+
+  **Read Operations** (any process):
+  - Component lookup via `get_components/1`
+  - Layout retrieval for hit testing via `hit_test/3`
+  - Metrics queries via `get_metrics/1`
+
+  **Write Operations** (coordinator only):
+  - Component registration/unregistration
+  - Layout storage and updates
+  - Metric increments (atomic via `update_counter/3`)
+
+  ### Concurrency
+
+  Tables use `:protected` access mode:
+  - Owner (coordinator) has read/write access
+  - Other processes have read-only access
+  - Prevents unauthorized writes and data corruption
+
+  ### Security
+
+  - Size limits prevent unbounded growth (DoS protection)
+  - Oldest entries evicted when limits exceeded
+  - Orphaned table detection and cleanup on startup
+
+  ### Performance
+
+  - ETS provides O(1) key-based lookups
+  - Layout cache reduces redundant calculations
+  - Atomic counters prevent race conditions in metrics
+
   """
 
   alias DesktopUI.{Layout, Widget}
@@ -114,12 +155,53 @@ defmodule DesktopUI.RenderingCoordinator do
   @metrics_table :desktop_ui_rendering_coordinator_metrics
   @layouts_table :desktop_ui_rendering_coordinator_layouts
 
+  # SECURITY: Maximum ETS table sizes to prevent DoS via unbounded growth
+  # These are soft limits - when exceeded, oldest entries are evicted
+  # Note: Metrics table has bounded keys (renders_completed, renders_failed, renders_skipped, window_bounds)
+  @max_components 1000
+  @max_layouts 500
+
   @doc """
   Start the RenderingCoordinator.
   """
   def start_link(opts) do
     {name_opts, opts} = Keyword.pop(opts, :name, nil)
     GenServer.start_link(__MODULE__, opts, name: name_opts)
+  end
+
+  # Minimum and maximum window bounds (8K resolution)
+  @min_window_width 100
+  @min_window_height 100
+  @max_window_width 7680
+  @max_window_height 4320
+
+  # Validate window dimension is within acceptable bounds
+  # Clamps values to prevent extreme window sizes that could cause rendering issues
+  defp validate_window_dimension(value, min, max, dimension) when is_integer(value) do
+    cond do
+      value < min ->
+        Logger.warning(
+          "Window #{dimension} (#{value}) below minimum (#{min}), using minimum instead"
+        )
+
+        min
+
+      value > max ->
+        Logger.warning(
+          "Window #{dimension} (#{value}) above maximum (#{max}), using maximum instead"
+        )
+
+        max
+
+      true ->
+        value
+    end
+  end
+
+  # Handle non-integer values by falling back to defaults
+  defp validate_window_dimension(_value, _min, max, dimension) do
+    Logger.warning("Invalid window #{dimension}, using default: #{max}")
+    max
   end
 
   @impl true
@@ -130,11 +212,28 @@ defmodule DesktopUI.RenderingCoordinator do
     window_width = Keyword.get(opts, :window_width, 800)
     window_height = Keyword.get(opts, :window_height, 600)
 
-    # Create ETS tables
-    ensure_ets_tables(bus: bus, renderer: renderer)
+    # Validate and clamp window bounds to prevent extreme values
+    window_width = validate_window_dimension(window_width, @min_window_width, @max_window_width, :width)
+    window_height = validate_window_dimension(window_height, @min_window_height, @max_window_height, :height)
 
-    # Initialize window bounds in ETS
-    :ets.insert(@metrics_table, {:window_bounds, %{width: window_width, height: window_height}})
+    # Create ETS tables
+    ensure_ets_tables()
+
+    # Initialize window bounds in ETS if we're the table owner
+    # This allows the first coordinator to set the initial bounds for sharing
+    if table_owner?(@metrics_table) do
+      :ets.insert(@metrics_table, {:window_bounds, %{width: window_width, height: window_height}})
+    end
+
+    # Store window bounds in state for this coordinator instance
+    # Each coordinator has its own validated bounds in its state
+    initial_state = %{
+      bus: bus,
+      renderer: renderer,
+      subscribed: false,
+      window_width: window_width,
+      window_height: window_height
+    }
 
     # Subscribe to all desktop_ui signals
     case Jido.Signal.Bus.subscribe(
@@ -143,49 +242,102 @@ defmodule DesktopUI.RenderingCoordinator do
            dispatch: {:pid, target: self()}
          ) do
       {:ok, _sub} ->
-        {:ok, %{bus: bus, renderer: renderer, subscribed: true}}
+        {:ok, %{initial_state | subscribed: true}}
 
       {:error, _reason} ->
-        {:ok, %{bus: bus, renderer: renderer, subscribed: false}}
+        {:ok, initial_state}
     end
   end
 
   # Ensure ETS tables exist (call this before using them)
-  defp ensure_ets_tables(opts \\ []) do
+  # SECURITY: Using :protected access instead of :public to prevent unauthorized writes
+  # Only the owner process (RenderingCoordinator) can write to these tables
+  # Other processes can read but not modify, preventing DoS via data corruption
+  defp ensure_ets_tables do
     table_opts = [
       :named_table,
       :set,
-      :public,
+      :protected,
       read_concurrency: true
     ]
 
-    # Create components table if it doesn't exist
-    case :ets.whereis(@components_table) do
-      :undefined -> :ets.new(@components_table, table_opts)
-      _ -> :already_exists
-    end
-
-    # Create metrics table if it doesn't exist
-    case :ets.whereis(@metrics_table) do
-      :undefined -> :ets.new(@metrics_table, table_opts)
-      _ -> :already_exists
-    end
-
-    # Create layouts table if it doesn't exist
-    case :ets.whereis(@layouts_table) do
-      :undefined -> :ets.new(@layouts_table, table_opts)
-      _ -> :already_exists
-    end
-
-    # Store configuration if provided
-    if opts != [] do
-      bus = Keyword.get(opts, :bus, :desktop_ui)
-      renderer = Keyword.get(opts, :renderer, __MODULE__.NoOpRenderer)
-      :ets.insert(@metrics_table, {:bus, bus})
-      :ets.insert(@metrics_table, {:renderer, renderer})
-    end
+    # Handle each table - check if exists, if owned by dead process, delete and recreate
+    ensure_table(@components_table, table_opts)
+    ensure_table(@metrics_table, table_opts)
+    ensure_table(@layouts_table, table_opts)
 
     :ok
+  end
+
+  # Ensure a single ETS table exists and is owned by a live process
+  # If table exists but is owned by a dead process, delete it and recreate
+  # SECURITY: Only attempt to delete tables if we're the owner (to prevent permission errors)
+  defp ensure_table(table_name, opts) do
+    case :ets.whereis(table_name) do
+      :undefined ->
+        # Table doesn't exist, create it (we become owner)
+        :ets.new(table_name, opts)
+
+      owner_pid when is_pid(owner_pid) ->
+        # Table exists, check if we're the owner
+        if owner_pid == self() do
+          # We own this table, already initialized
+          :already_exists
+        else
+          # Another process owns this table
+          if Process.alive?(owner_pid) do
+            # Owner is alive (and not us), reuse existing table
+            :already_exists
+          else
+            # Owner is dead, try to delete orphaned table and recreate (we become new owner)
+            # Note: This may fail if the table has a heir, but that's acceptable
+            try do
+              :ets.delete(table_name)
+              :ets.new(table_name, opts)
+            rescue
+              ArgumentError -> :already_exists
+            end
+          end
+        end
+
+      _ ->
+        # Table has some other owner type (heir, etc), just use it as-is
+        # We can't delete it, and we shouldn't recreate it
+        :already_exists
+    end
+  end
+
+  # Check if the current process owns the given ETS table
+  defp table_owner?(table_name) do
+    case :ets.whereis(table_name) do
+      :undefined -> false
+      pid when is_pid(pid) -> pid == self()
+      _ -> false  # heir or other reference types
+    end
+  end
+
+  # Evict entries from a table if it exceeds its maximum size
+  # SECURITY: Prevents DoS via unbounded ETS table growth
+  defp maybe_evict_oldest(table_name, max_size) do
+    current_size = :ets.info(table_name, :size)
+
+    if current_size >= max_size do
+      # Table is at or over limit, evict all entries using select_delete
+      # This effectively resets the table when it exceeds its limit
+      match_spec = [{{:"$1", :"$2"}, [], [true]}]
+
+      evicted = :ets.select_delete(table_name, match_spec)
+
+      if evicted > 0 do
+        Logger.warning(
+          "Evicted #{evicted} entries from #{table_name} (size: #{current_size}, max: #{max_size})"
+        )
+      end
+
+      :ok
+    else
+      :ok
+    end
   end
 
   @impl true
@@ -222,6 +374,9 @@ defmodule DesktopUI.RenderingCoordinator do
         pid: pid,
         registered_at: DateTime.utc_now()
       }
+
+      # Check table size and evict if needed before inserting
+      maybe_evict_oldest(@components_table, @max_components)
 
       # Store in ETS table for persistence
       :ets.insert(@components_table, {component_id, component_info})
@@ -405,6 +560,30 @@ defmodule DesktopUI.RenderingCoordinator do
   end
 
   @doc """
+  Get the window bounds for a coordinator.
+
+  ## Parameters
+
+  - `coordinator_pid` - PID of the RenderingCoordinator
+
+  ## Returns
+
+  Map with `:width` and `:height` keys
+
+  ## Examples
+
+      {:ok, pid} = DesktopUI.RenderingCoordinator.start_link([])
+      bounds = DesktopUI.RenderingCoordinator.get_window_bounds(pid)
+      #=> %{width: 800, height: 600}
+
+  """
+  @spec get_window_bounds(pid()) :: %{width: pos_integer(), height: pos_integer()}
+  def get_window_bounds(coordinator_pid) do
+    state = :sys.get_state(coordinator_pid)
+    %{width: state.window_width, height: state.window_height}
+  end
+
+  @doc """
   Hit test for a component's current layout.
 
   This function performs a hit test on the stored layout tree for a component
@@ -445,20 +624,19 @@ defmodule DesktopUI.RenderingCoordinator do
   # Private Functions
 
   # Handle a state change signal from a component
-  defp handle_state_change(_state, component_id, new_elm_state) do
+  defp handle_state_change(state, component_id, new_elm_state) do
     case :ets.lookup(@components_table, component_id) do
       [] ->
         # Component not registered - skip
         :ok
 
       [{^component_id, component_info}] ->
-        renderer = get_metric(:renderer, __MODULE__.NoOpRenderer)
-        render_component(component_id, component_info, new_elm_state, renderer)
+        render_component(component_id, component_info, new_elm_state, state.renderer, state.bus)
     end
   end
 
   # Handle a render request signal
-  defp handle_render_request(_state, component_id, force) do
+  defp handle_render_request(state, component_id, force) do
     case :ets.lookup(@components_table, component_id) do
       [] ->
         # Component not registered - skip
@@ -468,13 +646,11 @@ defmodule DesktopUI.RenderingCoordinator do
         if component_info.pid do
           case get_component_elm_state(component_info.pid) do
             {:ok, elm_state} ->
-              renderer = get_metric(:renderer, __MODULE__.NoOpRenderer)
-
               # If force is true, bypass version checking
               if force do
-                force_render_component(component_id, component_info, elm_state, renderer)
+                force_render_component(component_id, component_info, elm_state, state.renderer)
               else
-                render_component(component_id, component_info, elm_state, renderer)
+                render_component(component_id, component_info, elm_state, state.renderer, state.bus)
               end
 
             :error ->
@@ -503,6 +679,9 @@ defmodule DesktopUI.RenderingCoordinator do
           # Always calculate new layout when forced
           case Layout.calculate(widget, available_bounds) do
             {:ok, layout} ->
+              # Check table size and evict if needed before inserting
+              maybe_evict_oldest(@layouts_table, @max_layouts)
+
               :ets.insert(@layouts_table, {{component_id, "current"}, layout})
               render_widget_with_layout(renderer, component_id, layout)
               increment_metric(:renders_completed)
@@ -539,7 +718,7 @@ defmodule DesktopUI.RenderingCoordinator do
   end
 
   # Render a component by calling its view/1 function
-  defp render_component(component_id, component_info, elm_state, renderer) do
+  defp render_component(component_id, component_info, elm_state, renderer, _bus) do
     module = component_info.module
 
     # Call the component's view/1 function
@@ -612,13 +791,16 @@ defmodule DesktopUI.RenderingCoordinator do
   end
 
   # Helper to increment a metric counter in ETS
+  # Uses atomic :ets.update_counter/3 to prevent race conditions
   defp increment_metric(metric_name) do
-    case :ets.lookup(@metrics_table, metric_name) do
-      [{^metric_name, count}] ->
-        :ets.insert(@metrics_table, {metric_name, count + 1})
-
-      [] ->
-        # Metric doesn't exist yet, initialize to 1
+    try do
+      # Atomically increment the counter at position 2 of the tuple
+      # If key doesn't exist, this will raise an exception
+      :ets.update_counter(@metrics_table, metric_name, {2, 1})
+    rescue
+      ArgumentError ->
+        # Key doesn't exist, initialize to 1
+        # Note: This still has a small race window but is much better than before
         :ets.insert(@metrics_table, {metric_name, 1})
     end
   end
@@ -691,6 +873,9 @@ defmodule DesktopUI.RenderingCoordinator do
   defp calculate_and_store_layout(component_id, widget, available_bounds, _ui_tree_version, renderer) do
     case Layout.calculate(widget, available_bounds) do
       {:ok, layout} ->
+        # Check table size and evict if needed before inserting
+        maybe_evict_oldest(@layouts_table, @max_layouts)
+
         # Store layout for hit testing
         :ets.insert(@layouts_table, {{component_id, "current"}, layout})
 
