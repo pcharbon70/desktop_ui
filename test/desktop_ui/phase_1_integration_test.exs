@@ -16,6 +16,10 @@ defmodule DesktopUI.Phase1IntegrationTest do
     # Clear ETS tables for fresh state
     clear_ets_tables()
 
+    # Explicitly stop the signal bus if it's still running from a previous test
+    # This is needed because the Runtime's supervisor might not have been stopped properly
+    stop_signal_bus_if_running()
+
     {:ok, renderer_pid} = Mock.start_link(name: renderer_name)
 
     {:ok, runtime_pid} =
@@ -77,6 +81,54 @@ defmodule DesktopUI.Phase1IntegrationTest do
       :ets.delete_all_objects(:desktop_ui_rendering_coordinator_metrics)
     rescue
       _ -> :ok
+    end
+
+    try do
+      :ets.delete_all_objects(:desktop_ui_rendering_coordinator_layouts)
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp stop_signal_bus_if_running do
+    case Process.whereis(:desktop_ui) do
+      nil ->
+        :ok
+
+      pid when is_pid(pid) ->
+        # Signal bus is still running, stop it gracefully
+        try do
+          GenServer.stop(pid, :normal, 1000)
+        catch
+          _, _ ->
+            # Graceful stop failed, force kill
+            Process.exit(pid, :kill)
+        end
+
+        # Wait for the process to be fully unregistered
+        wait_for_process_unregistered(:desktop_ui, 100)
+    end
+  end
+
+  defp wait_for_process_unregistered(name, timeout) do
+    start_time = System.monotonic_time(:millisecond)
+
+    wait_for_process_unregistered_loop(name, start_time, timeout)
+  end
+
+  defp wait_for_process_unregistered_loop(_name, start_time, timeout) do
+    current_time = System.monotonic_time(:millisecond)
+    elapsed = current_time - start_time
+
+    if elapsed > timeout do
+      :timeout
+    else
+      case Process.whereis(:desktop_ui) do
+        nil -> :ok
+        _pid ->
+          Process.sleep(5)
+          wait_for_process_unregistered_loop(:desktop_ui, start_time, timeout)
+      end
     end
   end
 

@@ -146,13 +146,13 @@ defmodule DesktopUI.LayoutTest do
       invalid = %Widget{type: :invalid, props: [], children: []}
       result = Layout.calculate(invalid, %{width: 800, height: 600})
 
-      assert {:error, "unknown widget type: :invalid"} == result
+      assert {:error, "Unknown widget type: :invalid"} == result
     end
 
     test "returns error for non-widget" do
       result = Layout.calculate("not a widget", %{width: 800, height: 600})
 
-      assert {:error, "not a widget"} == result
+      assert {:error, "Not a widget"} == result
     end
 
     test "respects fixed width constraint" do

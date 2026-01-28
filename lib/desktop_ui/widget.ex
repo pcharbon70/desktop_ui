@@ -310,7 +310,7 @@ defmodule DesktopUI.Widget do
     end
   end
 
-  def validate(_other), do: {:error, "not a widget"}
+  def validate(_other), do: {:error, "Not a widget"}
 
   # Private Functions
 
