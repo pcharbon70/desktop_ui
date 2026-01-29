@@ -9,10 +9,12 @@ defmodule DesktopUI.Nif.SDL2 do
 
   The module tries multiple methods to find SDL2:
 
-  1. `DESKTOPUI_SDL2_PREFIX` environment variable
-  2. `pkg-config SDL2` (most portable)
-  3. `sdl2-config` tool (Unix fallback)
-  4. Standard system paths
+  1. `DESKTOPUI_SDL2_CROSS_PATH` - For cross-compilation (when target is specified)
+  2. Target-specific sysroot paths (e.g., `/usr/{target}/include`)
+  3. `DESKTOPUI_SDL2_PREFIX` environment variable
+  4. `pkg-config SDL2` (most portable)
+  5. `sdl2-config` tool (Unix fallback)
+  6. Standard system paths
 
   ## Graceful Degradation
 
@@ -21,7 +23,9 @@ defmodule DesktopUI.Nif.SDL2 do
 
   ## Environment Variables
 
-  * `DESKTOPUI_SDL2_PREFIX` - Override SDL2 installation path
+  * `DESKTOPUI_SDL2_PREFIX` - Override SDL2 installation path (native)
+  * `DESKTOPUI_SDL2_CROSS_PATH` - SDL2 path for cross-compilation
+  * `DESKTOPUI_SDL2_STATIC` - Set to "1" to enable static linking
 
   ## Examples
 
@@ -33,6 +37,13 @@ defmodule DesktopUI.Nif.SDL2 do
 
       iex> DesktopUI.Nif.SDL2.ldflags()
       ["-lSDL2"]
+
+      # Cross-compilation
+      iex> DesktopUI.Nif.SDL2.cflags("aarch64-linux-gnu")
+      ["-I/usr/aarch64-linux-gnu/include/SDL2"]
+
+      iex> DesktopUI.Nif.SDL2.ldflags("aarch64-linux-gnu")
+      ["-L/usr/aarch64-linux-gnu/lib", "-lSDL2"]
 
   """
 
@@ -72,6 +83,24 @@ defmodule DesktopUI.Nif.SDL2 do
   end
 
   @doc """
+  Checks if static linking is enabled via DESKTOPUI_SDL2_STATIC.
+
+  ## Examples
+
+      iex> DesktopUI.Nif.SDL2.static_linking?()
+      false
+
+      With DESKTOPUI_SDL2_STATIC=1:
+      iex> DesktopUI.Nif.SDL2.static_linking?()
+      true
+
+  """
+  @spec static_linking?() :: boolean()
+  def static_linking? do
+    System.get_env("DESKTOPUI_SDL2_STATIC") == "1"
+  end
+
+  @doc """
   Returns SDL2 C compiler flags (include paths).
 
   Returns a list of `-I` flags for SDL2 include directories.
@@ -82,27 +111,37 @@ defmodule DesktopUI.Nif.SDL2 do
       iex> DesktopUI.Nif.SDL2.cflags()
       ["-I/usr/include/SDL2"]
 
-  When SDL2 is not found:
+      When SDL2 is not found:
       iex> DesktopUI.Nif.SDL2.cflags()
       []
 
+      Cross-compilation:
+      iex> DesktopUI.Nif.SDL2.cflags("aarch64-linux-gnu")
+      ["-I/usr/aarch64-linux-gnu/include/SDL2"]
+
   """
-  @spec cflags() :: flag_result()
-  def cflags do
+  @spec cflags(target :: String.t() | nil) :: flag_result()
+  def cflags(target \\ nil) do
+    # For cross-compilation, try cross-specific paths first
+    if target != nil do
+      case get_cross_sdl2_prefix(target) do
+        {:ok, prefix} ->
+          get_cflags_from_prefix(prefix)
+
+        :error ->
+          # Fall back to native detection (may not work for linking but
+          # allows compilation to proceed for stub builds)
+          get_cflags_native()
+      end
+    else
+      get_cflags_native()
+    end
+  end
+
+  defp get_cflags_native do
     case get_sdl2_prefix() do
       {:ok, prefix} ->
-        include_dir = Path.join(prefix, "include")
-        if File.dir?(include_dir) do
-          ["-I#{include_dir}"]
-        else
-          # Try SDL2/SDL2 subdirectory
-          sdl2_dir = Path.join(include_dir, "SDL2")
-          if File.dir?(sdl2_dir) do
-            ["-I#{sdl2_dir}"]
-          else
-            []
-          end
-        end
+        get_cflags_from_prefix(prefix)
 
       :error ->
         # Try pkg-config
@@ -113,24 +152,80 @@ defmodule DesktopUI.Nif.SDL2 do
     end
   end
 
+  defp get_cflags_from_prefix(prefix) do
+    include_dir = Path.join(prefix, "include")
+    if File.dir?(include_dir) do
+      ["-I#{include_dir}"]
+    else
+      # Try SDL2/SDL2 subdirectory
+      sdl2_dir = Path.join(include_dir, "SDL2")
+      if File.dir?(sdl2_dir) do
+        ["-I#{sdl2_dir}"]
+      else
+        []
+      end
+    end
+  end
+
   @doc """
   Returns SDL2 linker flags.
 
   Returns a list of `-L` and `-l` flags for SDL2 libraries.
   Returns empty list if SDL2 is not found.
 
+  When `DESKTOPUI_SDL2_STATIC=1` is set, returns path to static library instead.
+
   ## Examples
 
       iex> DesktopUI.Nif.SDL2.ldflags()
       ["-lSDL2"]
 
-  With custom library path:
+      With custom library path:
       iex> DesktopUI.Nif.SDL2.ldflags()
       ["-L/custom/lib", "-lSDL2"]
 
+      Cross-compilation:
+      iex> DesktopUI.Nif.SDL2.ldflags("aarch64-linux-gnu")
+      ["-L/usr/aarch64-linux-gnu/lib", "-lSDL2"]
+
+      Static linking:
+      iex> System.put_env("DESKTOPUI_SDL2_STATIC", "1")
+      iex> DesktopUI.Nif.SDL2.ldflags()
+      ["/usr/lib/libSDL2.a"]
+
   """
-  @spec ldflags() :: flag_result()
-  def ldflags do
+  @spec ldflags(target :: String.t() | nil) :: flag_result()
+  def ldflags(target \\ nil) do
+    # Check if static linking is enabled
+    if static_linking?() do
+      get_static_ldflags(target)
+    else
+      get_dynamic_ldflags(target)
+    end
+  end
+
+  defp get_dynamic_ldflags(target) do
+    # For cross-compilation, try cross-specific paths first
+    if target != nil do
+      case get_cross_sdl2_prefix(target) do
+        {:ok, prefix} ->
+          lib_dir = Path.join(prefix, "lib")
+          if File.dir?(lib_dir) do
+            ["-L#{lib_dir}", "-lSDL2"]
+          else
+            ["-lSDL2"]
+          end
+
+        :error ->
+          # Fall back to native detection
+          get_dynamic_ldflags_native()
+      end
+    else
+      get_dynamic_ldflags_native()
+    end
+  end
+
+  defp get_dynamic_ldflags_native do
     case get_sdl2_prefix() do
       {:ok, prefix} ->
         lib_dir = Path.join(prefix, "lib")
@@ -145,6 +240,47 @@ defmodule DesktopUI.Nif.SDL2 do
         case pkg_config_ldflags() do
           {:ok, flags} -> flags
           :error -> []
+        end
+    end
+  end
+
+  defp get_static_ldflags(target) do
+    # For static linking, find the actual .a file
+    prefix_result = if target != nil do
+      get_cross_sdl2_prefix(target)
+    else
+      get_sdl2_prefix()
+    end
+
+    case prefix_result do
+      {:ok, prefix} ->
+        lib_dir = Path.join(prefix, "lib")
+        static_lib = Path.join(lib_dir, "libSDL2.a")
+
+        if File.exists?(static_lib) do
+          [static_lib]
+        else
+          # Try alternative naming
+          static_lib_alt = Path.join(lib_dir, "libSDL2static.a")
+          if File.exists?(static_lib_alt) do
+            [static_lib_alt]
+          else
+            # Fallback to dynamic if static not found
+            # (will likely fail at link time but provides clearer error)
+            if target != nil do
+              get_dynamic_ldflags(target)
+            else
+              get_dynamic_ldflags_native()
+            end
+          end
+        end
+
+      :error ->
+        # Try to find in system paths
+        if target != nil do
+          get_dynamic_ldflags(target)
+        else
+          get_dynamic_ldflags_native()
         end
     end
   end
@@ -178,6 +314,57 @@ defmodule DesktopUI.Nif.SDL2 do
   end
 
   # Private Functions
+
+  defp get_cross_sdl2_prefix(target) when is_binary(target) do
+    # 1. Check DESKTOPUI_SDL2_CROSS_PATH first (manual override)
+    case System.get_env("DESKTOPUI_SDL2_CROSS_PATH") do
+      nil ->
+        # 2. Try target-specific sysroot paths
+        get_cross_sysroot_sdl2(target)
+
+      cross_path ->
+        if File.dir?(cross_path) do
+          {:ok, cross_path}
+        else
+          # Cross path set but invalid, try sysroot
+          get_cross_sysroot_sdl2(target)
+        end
+    end
+  end
+
+  defp get_cross_sysroot_sdl2(target) do
+    # Build list of potential cross-sysroot paths
+    cross_paths = [
+      # Standard multiarch pattern: /usr/{target-triple}
+      Path.join("/usr", target),
+      # Debian multiarch pattern: /usr/lib/{target-triple}
+      Path.join(["/usr", "lib", target]),
+      # Common cross-compile sysroot
+      Path.join(["/usr", target, "usr"]),
+    ]
+
+    # Check each path for SDL2
+    Enum.find_value(cross_paths, fn path ->
+      if File.dir?(path) do
+        # Check for SDL2 headers
+        include_dir = Path.join(path, "include")
+        sdl_h = Path.join(include_dir, "SDL.h")
+        sdl2_sdl_h = Path.join([include_dir, "SDL2", "SDL.h"])
+
+        if File.exists?(sdl_h) or File.exists?(sdl2_sdl_h) do
+          {:ok, path}
+        else
+          nil
+        end
+      else
+        nil
+      end
+    end)
+    |> case do
+      nil -> :error
+      result -> result
+    end
+  end
 
   defp get_sdl2_prefix do
     case System.get_env("DESKTOPUI_SDL2_PREFIX") do

@@ -139,11 +139,16 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     case find_make_executable() do
       {:ok, make} ->
         # Prepare environment variables
+        # Pass target to SDL2 functions for cross-compilation detection
+        is_cross_compile = target != DesktopUI.Nif.Platform.target_triple()
+        sdl2_cflags = DesktopUI.Nif.SDL2.cflags(if is_cross_compile, do: target, else: nil)
+        sdl2_ldflags = DesktopUI.Nif.SDL2.ldflags(if is_cross_compile, do: target, else: nil)
+
         env = [
           {"ERTS_INCLUDE_DIR", erts_include},
           {"DESKTOPUI_TARGET", target},
-          {"SDL2_CFLAGS", Enum.join(DesktopUI.Nif.SDL2.cflags(), " ")},
-          {"SDL2_LDFLAGS", Enum.join(DesktopUI.Nif.SDL2.ldflags(), " ")}
+          {"SDL2_CFLAGS", Enum.join(sdl2_cflags, " ")},
+          {"SDL2_LDFLAGS", Enum.join(sdl2_ldflags, " ")}
         ]
 
         # Run make with environment variables
@@ -399,8 +404,13 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
 
   defp build_zig_command(zig_path, target, erts_include, output_path) do
     # Get SDL2 flags
-    sdl2_cflags = DesktopUI.Nif.SDL2.cflags()
-    sdl2_ldflags = DesktopUI.Nif.SDL2.ldflags()
+    # Determine if this is cross-compilation
+    native_target = DesktopUI.Nif.Platform.target_triple()
+    is_cross_compile = target != native_target
+    sdl2_target = if is_cross_compile, do: target, else: nil
+
+    sdl2_cflags = DesktopUI.Nif.SDL2.cflags(sdl2_target)
+    sdl2_ldflags = DesktopUI.Nif.SDL2.ldflags(sdl2_target)
 
     # Build command arguments
     # zig cc -target {target} -O2 -fPIC -shared -I {erts} {sdl2_cflags} {source} -o {output} {sdl2_ldflags}

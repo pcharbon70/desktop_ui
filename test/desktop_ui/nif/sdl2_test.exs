@@ -199,4 +199,217 @@ defmodule DesktopUI.Nif.SDL2Test do
       end
     end
   end
+
+  describe "static_linking?/0" do
+    test "returns false by default" do
+      result = SDL2.static_linking?()
+      refute result
+    end
+
+    test "returns true when DESKTOPUI_SDL2_STATIC=1" do
+      original = System.get_env("DESKTOPUI_SDL2_STATIC")
+
+      try do
+        System.put_env("DESKTOPUI_SDL2_STATIC", "1")
+        result = SDL2.static_linking?()
+        assert result
+      after
+        if original do
+          System.put_env("DESKTOPUI_SDL2_STATIC", original)
+        else
+          System.delete_env("DESKTOPUI_SDL2_STATIC")
+        end
+      end
+    end
+
+    test "returns false when DESKTOPUI_SDL2_STATIC is set to other value" do
+      original = System.get_env("DESKTOPUI_SDL2_STATIC")
+
+      try do
+        System.put_env("DESKTOPUI_SDL2_STATIC", "0")
+        result = SDL2.static_linking?()
+        refute result
+      after
+        if original do
+          System.put_env("DESKTOPUI_SDL2_STATIC", original)
+        else
+          System.delete_env("DESKTOPUI_SDL2_STATIC")
+        end
+      end
+    end
+  end
+
+  describe "cflags/1 (with target)" do
+    test "accepts nil target (native compilation)" do
+      result = SDL2.cflags(nil)
+      assert is_list(result)
+    end
+
+    test "accepts target string for cross-compilation" do
+      result = SDL2.cflags("aarch64-linux-gnu")
+      assert is_list(result)
+    end
+
+    test "returns different results for cross-compilation when DESKTOPUI_SDL2_CROSS_PATH is set" do
+      tmp_dir = System.tmp_dir!()
+      cross_path = Path.join(tmp_dir, "cross_sdl2_#{:erlang.unique_integer([:positive])}")
+      cross_include = Path.join(cross_path, "include")
+      File.mkdir_p!(cross_include)
+
+      original_cross = System.get_env("DESKTOPUI_SDL2_CROSS_PATH")
+
+      try do
+        System.put_env("DESKTOPUI_SDL2_CROSS_PATH", cross_path)
+
+        # With target, should use cross path
+        result = SDL2.cflags("aarch64-linux-gnu")
+        assert is_list(result)
+
+        # Without target, should not use cross path
+        result_native = SDL2.cflags()
+        assert is_list(result_native)
+      after
+        if original_cross do
+          System.put_env("DESKTOPUI_SDL2_CROSS_PATH", original_cross)
+        else
+          System.delete_env("DESKTOPUI_SDL2_CROSS_PATH")
+        end
+        File.rm_rf!(cross_path)
+      end
+    end
+  end
+
+  describe "ldflags/1 (with target)" do
+    test "accepts nil target (native compilation)" do
+      result = SDL2.ldflags(nil)
+      assert is_list(result)
+    end
+
+    test "accepts target string for cross-compilation" do
+      result = SDL2.ldflags("aarch64-linux-gnu")
+      assert is_list(result)
+    end
+
+    test "returns static library path when DESKTOPUI_SDL2_STATIC=1 with target" do
+      tmp_dir = System.tmp_dir!()
+      cross_path = Path.join(tmp_dir, "cross_sdl2_static_#{:erlang.unique_integer([:positive])}")
+      cross_lib = Path.join(cross_path, "lib")
+      File.mkdir_p!(cross_lib)
+
+      # Create a fake static library
+      static_lib = Path.join(cross_lib, "libSDL2.a")
+      File.write!(static_lib, "")
+
+      original_cross = System.get_env("DESKTOPUI_SDL2_CROSS_PATH")
+      original_static = System.get_env("DESKTOPUI_SDL2_STATIC")
+
+      try do
+        System.put_env("DESKTOPUI_SDL2_CROSS_PATH", cross_path)
+        System.put_env("DESKTOPUI_SDL2_STATIC", "1")
+
+        result = SDL2.ldflags("aarch64-linux-gnu")
+
+        # Should return path to static library
+        assert static_lib in result
+      after
+        if original_cross do
+          System.put_env("DESKTOPUI_SDL2_CROSS_PATH", original_cross)
+        else
+          System.delete_env("DESKTOPUI_SDL2_CROSS_PATH")
+        end
+
+        if original_static do
+          System.put_env("DESKTOPUI_SDL2_STATIC", original_static)
+        else
+          System.delete_env("DESKTOPUI_SDL2_STATIC")
+        end
+
+        File.rm_rf!(cross_path)
+      end
+    end
+
+    test "falls back to dynamic linking when static library not found" do
+      tmp_dir = System.tmp_dir!()
+      cross_path = Path.join(tmp_dir, "cross_sdl2_nostatic_#{:erlang.unique_integer([:positive])}")
+      cross_lib = Path.join(cross_path, "lib")
+      File.mkdir_p!(cross_lib)
+
+      # Don't create static library - only directory
+
+      original_cross = System.get_env("DESKTOPUI_SDL2_CROSS_PATH")
+      original_static = System.get_env("DESKTOPUI_SDL2_STATIC")
+
+      try do
+        System.put_env("DESKTOPUI_SDL2_CROSS_PATH", cross_path)
+        System.put_env("DESKTOPUI_SDL2_STATIC", "1")
+
+        result = SDL2.ldflags("aarch64-linux-gnu")
+
+        # Should fall back to dynamic linking flags
+        assert is_list(result)
+        # Should not contain the nonexistent .a file
+        refute Enum.any?(result, &String.contains?(&1, ".a"))
+      after
+        if original_cross do
+          System.put_env("DESKTOPUI_SDL2_CROSS_PATH", original_cross)
+        else
+          System.delete_env("DESKTOPUI_SDL2_CROSS_PATH")
+        end
+
+        if original_static do
+          System.put_env("DESKTOPUI_SDL2_STATIC", original_static)
+        else
+          System.delete_env("DESKTOPUI_SDL2_STATIC")
+        end
+
+        File.rm_rf!(cross_path)
+      end
+    end
+  end
+
+  describe "cross-compilation detection" do
+    test "DESKTOPUI_SDL2_CROSS_PATH takes precedence over sysroot" do
+      tmp_dir = System.tmp_dir!()
+      cross_path = Path.join(tmp_dir, "cross_override_#{:erlang.unique_integer([:positive])}")
+      cross_include = Path.join(cross_path, "include")
+      File.mkdir_p!(cross_include)
+
+      original_cross = System.get_env("DESKTOPUI_SDL2_CROSS_PATH")
+
+      try do
+        System.put_env("DESKTOPUI_SDL2_CROSS_PATH", cross_path)
+
+        result = SDL2.cflags("x86_64-windows-gnu")
+
+        # Should use our custom path
+        assert Enum.any?(result, fn flag ->
+          String.contains?(flag, cross_path)
+        end)
+      after
+        if original_cross do
+          System.put_env("DESKTOPUI_SDL2_CROSS_PATH", original_cross)
+        else
+          System.delete_env("DESKTOPUI_SDL2_CROSS_PATH")
+        end
+        File.rm_rf!(cross_path)
+      end
+    end
+
+    test "falls back to native detection when cross path not found" do
+      # Clear any cross path environment
+      original_cross = System.get_env("DESKTOPUI_SDL2_CROSS_PATH")
+
+      try do
+        System.delete_env("DESKTOPUI_SDL2_CROSS_PATH")
+
+        # Should not error, just fall back
+        result = SDL2.cflags("aarch64-linux-gnu")
+        assert is_list(result)
+      after
+        if original_cross do
+          System.put_env("DESKTOPUI_SDL2_CROSS_PATH", original_cross)
+        end
+      end
+    end
+  end
 end
