@@ -89,10 +89,15 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
           compile_with_zig(erts_include, target, [])
 
         {:ok, :makefile} ->
-          compile_with_makefile(erts_include, target, [])
+          compile_with_makefile(erts_include, target, [log: true])
 
         {:ok, :none} ->
           # Explicitly skipped via DESKTOPUI_PREFER_COMPILER=none
+          Mix.shell().info([
+            :cyan,
+            "NIF compilation skipped (DESKTOPUI_PREFER_COMPILER=none)"
+          ])
+
           {:noop, []}
 
         {:error, :no_compiler_available} ->
@@ -134,8 +139,14 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     end
   end
 
-  defp compile_with_makefile(erts_include, target, _opts) do
+  defp compile_with_makefile(erts_include, target, opts) do
     # Find make executable
+    log_selection = Keyword.get(opts, :log, true)
+
+    if log_selection do
+      log_makefile_selection()
+    end
+
     case find_make_executable() do
       {:ok, make} ->
         # Prepare environment variables
@@ -331,7 +342,7 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
         # Try fallback to Makefile
         case find_make_executable() do
           {:ok, _make} ->
-            compile_with_makefile(erts_include, target, [])
+            compile_with_makefile(erts_include, target, [log: false])
 
           {:error, :not_found} ->
             diagnostic = %{
@@ -355,7 +366,7 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
         # Try fallback to Makefile
         case find_make_executable() do
           {:ok, _make} ->
-            compile_with_makefile(erts_include, target, [])
+            compile_with_makefile(erts_include, target, [log: false])
 
           {:error, :not_found} ->
             diagnostic = %{
@@ -587,6 +598,19 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
   end
 
   # Compiler Selection Functions
+
+  defp log_makefile_selection do
+    pref = System.get_env("DESKTOPUI_PREFER_COMPILER")
+
+    message = if pref == "makefile" do
+      "Compiling NIF with Makefile (DESKTOPUI_PREFER_COMPILER=makefile)"
+    else
+      # Fallback selection
+      "Compiling NIF with Makefile (fallback from Zig)"
+    end
+
+    Mix.shell().info([:cyan, message])
+  end
 
   defp choose_compiler do
     case System.get_env("DESKTOPUI_PREFER_COMPILER") do
