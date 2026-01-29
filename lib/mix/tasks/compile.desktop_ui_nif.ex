@@ -3,21 +3,36 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
   Mix compiler task for building the DesktopUI NIF.
 
   This compiler integrates NIF compilation into the standard `mix compile` workflow.
-  It uses the Makefile as the primary build method in Phase 1, with plans to add
-  Zig support in Phase 2.
+  It supports both Zig (preferred) and Makefile as build methods, with automatic
+  fallback and explicit selection options.
+
+  ## Compiler Selection
+
+  The compiler selection strategy is:
+  1. If `DESKTOPUI_PREFER_COMPILER` is set, use that compiler (zig/makefile/none)
+  2. Otherwise, try Zig first if available and version-compatible
+  3. Fall back to Makefile if Zig is unavailable
+  4. Return error if both compilers are unavailable
 
   ## Environment Variables
 
   * `DESKTOPUI_SKIP_NIF` - Set to "1" to skip NIF compilation
   * `DESKTOPUI_TARGET` - Target triple for cross-compilation (e.g., x86_64-windows-gnu)
+  * `DESKTOPUI_PREFER_COMPILER` - Force specific compiler: "zig", "makefile", or "none"
   * `ERTS_INCLUDE_DIR` - Override ERTS include directory detection
   * `SDL2_CFLAGS` - Override SDL2 C compiler flags
   * `SDL2_LDFLAGS` - Override SDL2 linker flags
 
   ## Examples
 
-      # Default compilation
+      # Default compilation (Zig preferred, Makefile fallback)
       mix compile
+
+      # Force Zig compiler
+      DESKTOPUI_PREFER_COMPILER=zig mix compile
+
+      # Force Makefile compiler
+      DESKTOPUI_PREFER_COMPILER=makefile mix compile
 
       # Skip NIF compilation
       DESKTOPUI_SKIP_NIF=1 mix compile
@@ -65,12 +80,33 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
   # Private Functions
 
   defp compile_nif do
-    # Get ERTS include directory
+    # Get ERTS include directory and target
     with {:ok, erts_include} <- get_erts_include(),
-         {:ok, target} <- get_target(),
-         {:ok, _make} <- find_make_executable() do
-      # Invoke Makefile with environment variables
-      compile_with_makefile(erts_include, target, [])
+         {:ok, target} <- get_target() do
+      # Choose compiler based on preference and availability
+      case choose_compiler() do
+        {:ok, :zig} ->
+          compile_with_zig(erts_include, target, [])
+
+        {:ok, :makefile} ->
+          compile_with_makefile(erts_include, target, [])
+
+        {:ok, :none} ->
+          # Explicitly skipped via DESKTOPUI_PREFER_COMPILER=none
+          {:noop, []}
+
+        {:error, :no_compiler_available} ->
+          # No compiler available
+          diagnostic = %{
+            compiler_name: "desktop_ui_nif",
+            message: "No compiler available. Please install Zig (recommended) or make.",
+            position: nil,
+            file: nil,
+            severity: :error
+          }
+
+          {:error, [diagnostic]}
+      end
     else
       {:error, reason} ->
         # Return error diagnostic
@@ -78,7 +114,7 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
           compiler_name: "desktop_ui_nif",
           message: "NIF compilation failed: #{inspect(reason)}",
           position: nil,
-          file: "make",
+          file: "desktop_ui_nif",
           severity: :error
         }
 
@@ -214,5 +250,266 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     }
 
     File.write!(manifest, :erlang.term_to_binary(info))
+  end
+
+  # Zig Compilation Functions
+
+  defp compile_with_zig(erts_include, target, _opts) do
+    # Find Zig executable and check version
+    with {:ok, zig_path} <- DesktopUI.Nif.Zig.find_executable(),
+         {:ok, zig_version} <- DesktopUI.Nif.Zig.version(),
+         :ok <- DesktopUI.Nif.Zig.check_version(zig_version),
+         {:ok, zig_target} <- map_target_for_zig(target) do
+      # All checks passed, compile with Zig
+      Mix.shell().info([
+        :cyan,
+        "Compiling NIF with Zig #{zig_version} (target: #{zig_target})"
+      ])
+
+      # Build Zig command
+      output_path = get_output_path()
+      zig_cmd = build_zig_command(zig_path, zig_target, erts_include, output_path)
+
+      # Run Zig compilation
+      {output, exit_code} = System.cmd(zig_path, zig_cmd, cd: Mix.Project.build_path())
+
+      case exit_code do
+        0 ->
+          # Success - write manifest
+          write_manifest()
+          {:ok, []}
+
+        _ ->
+          # Compilation error
+          diagnostic = %{
+            compiler_name: "desktop_ui_nif",
+            message: "Zig compilation failed:\n#{output}",
+            position: nil,
+            file: "zig",
+            severity: :error
+          }
+
+          {:error, [diagnostic]}
+      end
+    else
+      {:error, :not_found} ->
+        # Zig not found
+        Mix.shell().info([
+          :yellow,
+          "Zig not found. Falling back to Makefile."
+        ])
+
+        # Try fallback to Makefile
+        case find_make_executable() do
+          {:ok, _make} ->
+            compile_with_makefile(erts_include, target, [])
+
+          {:error, :not_found} ->
+            diagnostic = %{
+              compiler_name: "desktop_ui_nif",
+              message: "No compiler available. Please install Zig (recommended) or make.",
+              position: nil,
+              file: nil,
+              severity: :error
+            }
+
+            {:error, [diagnostic]}
+        end
+
+      {:error, :incompatible_version} ->
+        # Zig version incompatible
+        Mix.shell().info([
+          :yellow,
+          "Zig version incompatible. Falling back to Makefile."
+        ])
+
+        # Try fallback to Makefile
+        case find_make_executable() do
+          {:ok, _make} ->
+            compile_with_makefile(erts_include, target, [])
+
+          {:error, :not_found} ->
+            diagnostic = %{
+              compiler_name: "desktop_ui_nif",
+              message: "Zig version incompatible and make not found. Please install Zig #{DesktopUI.Nif.Zig.minimum_version()} or later.",
+              position: nil,
+              file: nil,
+              severity: :error
+            }
+
+            {:error, [diagnostic]}
+        end
+
+      {:error, :unknown_target} ->
+        diagnostic = %{
+          compiler_name: "desktop_ui_nif",
+          message: "Unknown target for Zig: #{target}",
+          position: nil,
+          file: "zig",
+          severity: :error
+        }
+
+        {:error, [diagnostic]}
+    end
+  end
+
+  defp map_target_for_zig(target) do
+    # Our target triples are already compatible with Zig
+    # Just validate that it's a known target format
+    case target do
+      t when t in [
+        "x86_64-linux-gnu",
+        "aarch64-linux-gnu",
+        "x86_64-macos-none",
+        "aarch64-macos-none",
+        "x86_64-windows-gnu"
+      ] ->
+        {:ok, target}
+
+      _ ->
+        # For unknown targets, try to use them anyway
+        # Zig might support targets we don't know about
+        {:ok, target}
+    end
+  end
+
+  defp build_zig_command(zig_path, target, erts_include, output_path) do
+    # Get SDL2 flags
+    sdl2_cflags = DesktopUI.Nif.SDL2.cflags()
+    sdl2_ldflags = DesktopUI.Nif.SDL2.ldflags()
+
+    # Build command arguments
+    # zig cc -target {target} -O2 -fPIC -shared -I {erts} {sdl2_cflags} {source} -o {output} {sdl2_ldflags}
+    base_args = [
+      "cc",
+      "-target", target,
+      "-O2",
+      "-fPIC",
+      "-shared",
+      "-I", erts_include
+    ]
+
+    # Add SDL2 cflags (each as separate argument if they contain spaces)
+    cflag_args = Enum.flat_map(sdl2_cflags, fn flag ->
+      String.split(flag, " ", trim: true)
+    end)
+
+    # Source files
+    source_files = Path.wildcard("c_src/*.c")
+
+    # Output
+    output_args = ["-o", output_path]
+
+    # Add SDL2 ldflags
+    ldflag_args = Enum.flat_map(sdl2_ldflags, fn flag ->
+      String.split(flag, " ", trim: true)
+    end)
+
+    # Combine all arguments
+    base_args ++ cflag_args ++ source_files ++ output_args ++ ldflag_args
+  end
+
+  defp get_output_path do
+    priv_dir = Path.join(Mix.Project.app_path(), "priv")
+    extension = DesktopUI.Nif.Platform.nif_extension()
+    Path.join(priv_dir, "desktop_ui_nif#{extension}")
+  end
+
+  # Compiler Selection Functions
+
+  defp choose_compiler do
+    case System.get_env("DESKTOPUI_PREFER_COMPILER") do
+      "zig" ->
+        # Force Zig
+        case DesktopUI.Nif.Zig.installed?() do
+          true ->
+            {:ok, :zig}
+
+          false ->
+            # Zig requested but not available - error
+            diagnostic = %{
+              compiler_name: "desktop_ui_nif",
+              message: "Zig compiler requested but not found. #{DesktopUI.Nif.Zig.not_found_error()}",
+              position: nil,
+              file: nil,
+              severity: :error
+            }
+
+            {:error, :zig_not_available}
+        end
+
+      "makefile" ->
+        # Force Makefile
+        case find_make_executable() do
+          {:ok, _make} ->
+            {:ok, :makefile}
+
+          {:error, :not_found} ->
+            diagnostic = %{
+              compiler_name: "desktop_ui_nif",
+              message: "Makefile compiler requested but make not found.",
+              position: nil,
+              file: nil,
+              severity: :error
+            }
+
+            {:error, :makefile_not_available}
+        end
+
+      "none" ->
+        # Explicitly skip compilation
+        {:ok, :none}
+
+      nil ->
+        # No preference - use default strategy
+        choose_compiler_default()
+
+      _other ->
+        # Invalid value, warn and use default
+        Mix.shell().info([
+          :yellow,
+          "Invalid DESKTOPUI_PREFER_COMPILER value. Using default compiler selection."
+        ])
+
+        choose_compiler_default()
+    end
+  end
+
+  defp choose_compiler_default do
+    # Default strategy: Try Zig first, fall back to Makefile
+    case DesktopUI.Nif.Zig.installed?() do
+      true ->
+        # Check version compatibility
+        case DesktopUI.Nif.Zig.version() do
+          {:ok, version} ->
+            case DesktopUI.Nif.Zig.check_version(version) do
+              :ok ->
+                # Zig is available and compatible
+                {:ok, :zig}
+
+              {:error, :incompatible_version} ->
+                # Zig is incompatible, try Makefile
+                try_makefile_fallback()
+            end
+
+          {:error, :not_found} ->
+            # Couldn't get version, try Makefile
+            try_makefile_fallback()
+        end
+
+      false ->
+        # Zig not installed, try Makefile
+        try_makefile_fallback()
+    end
+  end
+
+  defp try_makefile_fallback do
+    case find_make_executable() do
+      {:ok, _make} ->
+        {:ok, :makefile}
+
+      {:error, :not_found} ->
+        {:error, :no_compiler_available}
+    end
   end
 end
