@@ -108,8 +108,20 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
           {:error, [diagnostic]}
       end
     else
+      {:error, {:invalid_target, message}} ->
+        # Invalid target triple - provide helpful error
+        diagnostic = %{
+          compiler_name: "desktop_ui_nif",
+          message: message,
+          position: nil,
+          file: nil,
+          severity: :error
+        }
+
+        {:error, [diagnostic]}
+
       {:error, reason} ->
-        # Return error diagnostic
+        # Other error
         diagnostic = %{
           compiler_name: "desktop_ui_nif",
           message: "NIF compilation failed: #{inspect(reason)}",
@@ -222,8 +234,20 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
 
   defp get_target do
     case System.get_env("DESKTOPUI_TARGET") do
-      nil -> {:ok, DesktopUI.Nif.Platform.target_triple()}
-      target -> {:ok, target}
+      nil ->
+        # No override - use native target
+        {:ok, DesktopUI.Nif.Platform.target_triple()}
+
+      target ->
+        # Validate the target triple
+        case validate_target(target) do
+          :ok ->
+            {:ok, target}
+
+          {:error, reason} ->
+            # Target is invalid - return helpful error
+            {:error, {:invalid_target, format_target_error(target, reason)}}
+        end
     end
   end
 
@@ -267,7 +291,7 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
       ])
 
       # Build Zig command
-      output_path = get_output_path()
+      output_path = get_output_path(target)
       zig_cmd = build_zig_command(zig_path, zig_target, erts_include, output_path)
 
       # Run Zig compilation
@@ -410,9 +434,146 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
   end
 
   defp get_output_path do
+    get_output_path(nil)
+  end
+
+  defp get_output_path(target) do
     priv_dir = Path.join(Mix.Project.app_path(), "priv")
     extension = DesktopUI.Nif.Platform.nif_extension()
-    Path.join(priv_dir, "desktop_ui_nif#{extension}")
+
+    # For cross-compilation, include target in filename
+    # For native builds, use simple naming
+    case target do
+      nil ->
+        # Native build - use simple naming
+        Path.join(priv_dir, "desktop_ui_nif#{extension}")
+
+      t ->
+        # Cross-compile - include target in filename for clarity
+        # Example: desktop_ui_nif.x86_64-windows-gnu.dll
+        if is_cross_compile?(t) do
+          Path.join(priv_dir, "desktop_ui_nif.#{t}#{extension}")
+        else
+          # Target matches native platform, use simple naming
+          Path.join(priv_dir, "desktop_ui_nif#{extension}")
+        end
+    end
+  end
+
+  # Cross-Compilation Helper Functions
+
+  defp validate_target(target) when is_binary(target) do
+    # Validate target triple format: {arch}-{os}-{env}
+    case String.split(target, "-", parts: 3) do
+      [arch, os, env] ->
+        # Check if components are valid
+        cond do
+          !valid_architecture?(arch) ->
+            {:error, {:unknown_architecture, arch}}
+
+          !valid_os?(os) ->
+            {:error, {:unknown_os, os}}
+
+          !valid_environment?(env) ->
+            {:error, {:unknown_environment, env}}
+
+          true ->
+            :ok
+        end
+
+      _ ->
+        {:error, :invalid_format}
+    end
+  end
+
+  defp is_cross_compile?(target) do
+    # Compare with native target
+    native_target = DesktopUI.Nif.Platform.target_triple()
+    target != native_target
+  end
+
+  defp valid_architecture?(arch) do
+    # List of known architectures
+    # Be permissive - allow unknown architectures as Zig may support them
+    arch in [
+      "x86_64", "aarch64", "arm64", "arm", "x86",
+      "riscv64", "riscv32", "mips64", "mips",
+      "powerpc64le", "powerpc", "s390x", "sparc64"
+    ] or Regex.match?(~r/^[a-z0-9_]+$/, arch)
+  end
+
+  defp valid_os?(os) do
+    # List of known OS names
+    # Be permissive - allow unknown OS as Zig may support them
+    os in [
+      "linux", "macos", "windows", "freebsd", "openbsd",
+      "netbsd", "dragonfly", "solaris", "illumos"
+    ] or Regex.match?(~r/^[a-z0-9_]+$/, os)
+  end
+
+  defp valid_environment?(env) do
+    # List of known environments
+    # Be permissive - allow unknown environments as Zig may support them
+    env in [
+      "gnu", "gnueabi", "gnueabihf", "musl", "musleabi", "musleabihf",
+      "none", "eabi", "eabihf", "android"
+    ] or Regex.match?(~r/^[a-z0-9_]+$/, env)
+  end
+
+  defp format_target_error(target, reason) do
+    base_message = "Invalid target triple: \"#{target}\""
+
+    detail_message = case reason do
+      :invalid_format ->
+        """
+
+        Expected format: {arch}-{os}-{env}
+        Example: x86_64-linux-gnu
+
+        The target triple must have exactly three components separated by hyphens.
+        """
+
+      {:unknown_architecture, arch} ->
+        """
+
+        Unknown architecture: "#{arch}"
+
+        Supported architectures:
+        - x86_64, aarch64, arm64, arm, x86
+        - riscv64, riscv32, mips64, mips
+        - powerpc64le, powerpc, s390x, sparc64
+
+        Or Zig may support additional architectures.
+        """
+
+      {:unknown_os, os} ->
+        """
+
+        Unknown OS: "#{os}"
+
+        Supported OS:
+        - linux, macos, windows
+        - freebsd, openbsd, netbsd
+        - dragonfly, solaris, illumos
+
+        Or Zig may support additional operating systems.
+        """
+
+      {:unknown_environment, env} ->
+        """
+
+        Unknown environment: "#{env}"
+
+        Supported environments:
+        - gnu, gnueabi, gnueabihf
+        - musl, musleabi, musleabihf
+        - none, eabi, eabihf, android
+
+        Or Zig may support additional environments.
+        """
+    end
+
+    base_message <> detail_message
   end
 
   # Compiler Selection Functions
