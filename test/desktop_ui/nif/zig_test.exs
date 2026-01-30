@@ -1,8 +1,10 @@
 defmodule DesktopUI.Nif.ZigTest do
+  require DesktopUI.Nif.TestHelper
   use ExUnit.Case, async: false
 
   alias DesktopUI.Nif.Zig
   alias DesktopUI.Nif.TestHelper
+  import DesktopUI.Nif.TestHelper, only: [with_env_var: 3]
 
   @moduletag :nif
   @moduletag :zig

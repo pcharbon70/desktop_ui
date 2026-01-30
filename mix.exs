@@ -28,7 +28,8 @@ defmodule DesktopUi.MixProject do
   defp deps do
     [
       {:jido, "~> 1.2"},
-      {:jido_action, "~> 1.0"}
+      {:jido_action, "~> 1.0"},
+      {:stream_data, "~> 1.0", only: [:dev, :test]}
     ]
   end
 
