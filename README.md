@@ -22,6 +22,13 @@ be found at <https://hexdocs.pm/desktop_ui>.
 ## Building
 
 DesktopUI includes a native NIF (Native Implemented Function) that requires compilation.
+
+**📖 Detailed build documentation is available in [docs/build/](docs/build/).**
+
+- [Getting Started Guide](docs/build/getting-started.md) - Quick start for your platform
+- [Cross-Compilation Guide](docs/build/cross-compilation.md) - Build for other platforms
+- [Platform Setup](docs/build/platform-setup/) - Platform-specific prerequisites
+- [Troubleshooting](docs/build/troubleshooting.md) - Common issues and solutions
 The NIF can be built using either Mix (recommended for Elixir projects) or Zig directly
 (useful for development and debugging).
 
