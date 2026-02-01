@@ -27,8 +27,9 @@ defmodule DesktopUi.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jido, "~> 1.2"},
-      {:jido_action, "~> 1.0"},
+      {:jido, path: "../agentjido/jido"},
+      {:jido_action, path: "../agentjido/jido_action", override: true},
+      {:jido_signal, path: "../agentjido/jido_signal", override: true},
       {:stream_data, "~> 1.0", only: [:dev, :test]}
     ]
   end
