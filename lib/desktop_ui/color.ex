@@ -34,7 +34,7 @@ defmodule DesktopUI.Color do
 
   """
 
-  use Bitwise
+  import Bitwise
 
   @type color :: {byte(), byte(), byte(), byte()}
   @type color_input ::

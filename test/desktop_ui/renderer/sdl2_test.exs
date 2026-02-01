@@ -1,8 +1,7 @@
 defmodule DesktopUI.Renderer.SDL2Test do
   use ExUnit.Case, async: false
 
-  alias DesktopUI.Renderer.SDL2
-  alias DesktopUI.Widget
+  alias DesktopUI.{Layout, Renderer.SDL2, Widget}
   alias DesktopUI.Graphics
 
   # These tests are not async because they test SDL2 window operations
@@ -386,6 +385,396 @@ defmodule DesktopUI.Renderer.SDL2Test do
       }
 
       assert :ok = SDL2.cleanup(renderer)
+    end
+  end
+
+  describe "render/2 with layout" do
+    @tag :sdl2
+    @tag :renderer
+    test "renders pre-calculated layout tree" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Layout Render Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              # Create widget and calculate layout
+              widget = Widget.label("Test Label")
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Render with layout
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "renders container layout with children" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Container Layout Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              # Create container widget and calculate layout
+              widget =
+                Widget.container(:vbox, [
+                  Widget.label("First"),
+                  Widget.label("Second")
+                ], spacing: 10, padding: 20)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Render with layout
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "renders nested container layouts" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Nested Layout Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              # Create nested container
+              widget =
+                Widget.container(:vbox, [
+                  Widget.label("Title"),
+                  Widget.container(:hbox, [
+                    Widget.button("Yes", :yes),
+                    Widget.button("No", :no)
+                  ], spacing: 8),
+                  Widget.label("Footer")
+                ], spacing: 16, padding: 10)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Render with layout
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+  end
+
+  describe "backward compatibility" do
+    @tag :sdl2
+    @tag :renderer
+    test "widget-based render still works" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Backward Compat Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              # Old API: render with widget directly
+              widget = Widget.label("Backward Compatible")
+              assert :ok = SDL2.render(renderer, widget)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "layout and widget rendering produce same result" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Equivalent Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              widget = Widget.label("Test")
+
+              # Both methods should succeed
+              assert :ok = SDL2.render(renderer, widget)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+  end
+
+  describe "positioning with layout" do
+    @tag :sdl2
+    @tag :renderer
+    test "spacing creates visible gaps in layout" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Spacing Layout Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              widget =
+                Widget.container(:vbox, [
+                  Widget.label("First"),
+                  Widget.label("Second"),
+                  Widget.label("Third")
+                ], spacing: 25)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Verify spacing is reflected in layout
+              children = layout.widget.children
+              assert length(children) == 3
+
+              # First child at y = 0 (no padding)
+              first = Enum.at(children, 0)
+              assert first.y == 0
+
+              # Second child at y = first.height + spacing
+              second = Enum.at(children, 1)
+              assert second.y == first.height + 25
+
+              # Render should succeed
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "padding creates margins in layout" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("Padding Layout Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              widget =
+                Widget.container(:vbox, [
+                  Widget.label("Padded")
+                ], padding: 30)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Verify padding is reflected in layout
+              children = layout.widget.children
+              first = Enum.at(children, 0)
+
+              # Child should be inset by padding
+              assert first.x == 30
+              assert first.y == 30
+
+              # Render should succeed
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+  end
+
+  describe "hbox layout rendering" do
+    @tag :sdl2
+    @tag :renderer
+    test "renders hbox with calculated layout" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("HBox Layout Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              widget =
+                Widget.container(:hbox, [
+                  Widget.button("A", :a),
+                  Widget.button("B", :b),
+                  Widget.button("C", :c)
+                ], spacing: 15, padding: 10)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Verify horizontal arrangement
+              children = layout.widget.children
+
+              # First child at x = padding
+              first = Enum.at(children, 0)
+              assert first.x == 10
+
+              # Second child at x = first.x + first.width + spacing
+              second = Enum.at(children, 1)
+              assert second.x == first.x + first.width + 15
+
+              # Render should succeed
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+
+    @tag :sdl2
+    @tag :renderer
+    test "renders hbox with alignment" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("HBox Align Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              # Create hbox with tall and short children, center aligned
+              widget =
+                Widget.container(:hbox, [
+                  Widget.label("Short"),
+                  Widget.label("Taller Text Here")
+                ], spacing: 10, padding: 10, align: :center)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Render should succeed
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+  end
+
+  describe "vbox layout rendering" do
+    @tag :sdl2
+    @tag :renderer
+    test "renders vbox with calculated layout" do
+      case Graphics.init() do
+        {:ok, %{}} ->
+          case Graphics.create_window("VBox Layout Test", 400, 300) do
+            {:ok, window_id} ->
+              assert {:ok, renderer} = SDL2.init(window_id)
+
+              widget =
+                Widget.container(:vbox, [
+                  Widget.label("First"),
+                  Widget.label("Second"),
+                  Widget.label("Third")
+                ], spacing: 15, padding: 10)
+
+              {:ok, layout} = Layout.calculate(widget, %{width: 400, height: 300})
+
+              # Verify vertical arrangement
+              children = layout.widget.children
+
+              # First child at y = padding
+              first = Enum.at(children, 0)
+              assert first.y == 10
+
+              # Second child at y = first.y + first.height + spacing
+              second = Enum.at(children, 1)
+              assert second.y == first.y + first.height + 15
+
+              # Render should succeed
+              assert :ok = SDL2.render(renderer, layout)
+
+              # Clean up
+              SDL2.cleanup(renderer)
+              Graphics.destroy_window(window_id)
+
+            {:error, _reason} ->
+              :ok
+          end
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+  end
+
+  describe "error handling with layout" do
+    test "calculates layout for empty container without error" do
+      # Empty containers should calculate layout successfully
+      widget = Widget.container(:vbox, [])
+      available_bounds = %{width: 100, height: 100}
+
+      assert {:ok, layout} = Layout.calculate(widget, available_bounds)
+      # Empty container has minimal size (at least 1x1)
+      assert layout.width >= 0
+      assert layout.height >= 0
     end
   end
 end

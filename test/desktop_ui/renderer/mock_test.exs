@@ -4,6 +4,17 @@ defmodule DesktopUI.Renderer.MockTest do
   alias DesktopUI.Renderer.Mock
   alias DesktopUI.Widget
 
+  setup_all do
+    # Start the Elixir Registry that Jido.Signal.Bus needs
+    # Jido.Signal.Bus registers itself under the name :Jido.Signal.Registry
+    # Check if it already exists first (may have been started by another test module)
+    case Process.whereis(Jido.Signal.Registry) do
+      nil -> {:ok, _} = Registry.start_link(keys: :unique, name: Jido.Signal.Registry)
+      _ -> :ok
+    end
+    :ok
+  end
+
   # Setup helper to start a unique renderer for each test
   defp start_renderer(context) do
     name = :"renderer_#{System.unique_integer([:positive, :monotonic])}"

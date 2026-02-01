@@ -1,22 +1,27 @@
 defmodule DesktopUI.Renderer.SDL2 do
   @moduledoc """
-  Real SDL2 renderer that draws widget trees to SDL2 windows.
+  Real SDL2 renderer that draws layout trees to SDL2 windows.
 
   This module implements the `DesktopUI.Renderer` behaviour.
 
   This module uses DesktopUI.Graphics API for actual drawing operations.
   For now, renders widgets as colored rectangles without text rendering.
 
+  ## Rendering with Layout
+
+  The renderer accepts pre-calculated layout trees from `DesktopUI.Layout.calculate/2`.
+  Layout trees contain explicit bounds for each widget, separating layout calculation
+  from rendering.
+
   ## Widget Rendering
 
   - **Label**: Filled rectangle (light blue)
   - **Button**: Outlined rectangle (gray outline, light fill)
-  - **Container (vbox)**: No visual, arranges children vertically
-  - **Container (hbox)**: No visual, arranges children horizontally
+  - **Container**: No visual, arranges children (vbox/hbox)
 
   ## Usage
 
-  ### Direct Usage
+  ### Direct Usage with Layout
 
       # Initialize SDL2 and create window
       DesktopUI.Graphics.init()
@@ -31,12 +36,21 @@ defmodule DesktopUI.Renderer.SDL2 do
         DesktopUI.Widget.button("Click me", :clicked)
       ], spacing: 8, padding: 16)
 
-      # Render widget tree
-      :ok = DesktopUI.Renderer.SDL2.render(renderer, widget)
+      # Calculate layout
+      available_bounds = %{width: 800, height: 600}
+      {:ok, layout} = DesktopUI.Layout.calculate(widget, available_bounds)
+
+      # Render layout
+      :ok = DesktopUI.Renderer.SDL2.render(renderer, layout)
 
       # Cleanup when done
       :ok = DesktopUI.Renderer.SDL2.cleanup(renderer)
       DesktopUI.Graphics.destroy_window(window_id)
+
+  ### Convenience: Render Widget Directly
+
+      # The renderer can also accept a widget and calculate layout internally
+      :ok = DesktopUI.Renderer.SDL2.render(renderer, widget)
 
   ### With RenderingCoordinator
 
@@ -50,8 +64,7 @@ defmodule DesktopUI.Renderer.SDL2 do
 
   @behaviour DesktopUI.Renderer
 
-  alias DesktopUI.Graphics
-  alias DesktopUI.Widget
+  alias DesktopUI.{Graphics, Layout, Widget}
 
   defstruct [:window_id, :window_width, :window_height]
 
@@ -69,13 +82,6 @@ defmodule DesktopUI.Renderer.SDL2 do
   @button_fill_color {220, 220, 220, 255}    # Light gray
   @button_outline_color {100, 100, 100, 255} # Dark gray
   @background_color {255, 255, 255, 255}     # White
-  @error_color {255, 100, 100, 255}          # Light red
-
-  # Default widget dimensions
-  @default_label_width 100
-  @default_label_height 30
-  @default_button_width 80
-  @default_button_height 30
 
   @doc """
   Initialize the SDL2 renderer with a window.
@@ -96,6 +102,7 @@ defmodule DesktopUI.Renderer.SDL2 do
 
   """
   @spec init(non_neg_integer()) :: {:ok, t()} | {:error, String.t()}
+  @impl true
   def init(window_id) when is_integer(window_id) do
     with {:ok, {width, height}} <- Graphics.get_window_size(window_id) do
       renderer = %__MODULE__{
@@ -109,35 +116,56 @@ defmodule DesktopUI.Renderer.SDL2 do
   end
 
   @doc """
-  Render a widget tree to the window.
+  Render to the window.
 
-  This function:
-  1. Clears the window with background color
-  2. Traverses the widget tree and renders each widget
-  3. Presents the rendered content to the screen
+  This function accepts either a `DesktopUI.Layout` struct (pre-calculated layout)
+  or a `DesktopUI.Widget` struct (calculates layout first).
+
+  When given a widget, this function is a convenience wrapper that calculates
+  layout first, then renders. For better performance, calculate layout once
+  and use `render/2` with the layout directly.
 
   ## Parameters
 
   - `renderer` - Renderer struct from `init/1`
-  - `widget` - Root widget to render
+  - `layout_or_widget` - Either a layout tree (from `Layout.calculate/2`) or a widget tree
 
   ## Returns
 
   - `:ok` - Rendered successfully
-  - `{:error, reason}` - Rendering failed
+  - `{:error, reason}` - Rendering or layout calculation failed
 
   ## Examples
 
+      # With pre-calculated layout (recommended for repeated renders)
       widget = Widget.label("Hello")
+      {:ok, layout} = Layout.calculate(widget, %{width: 800, height: 600})
+      :ok = DesktopUI.Renderer.SDL2.render(renderer, layout)
+
+      # With widget (convenience wrapper)
       :ok = DesktopUI.Renderer.SDL2.render(renderer, widget)
 
   """
+  @spec render(t(), Layout.t()) :: :ok | {:error, String.t()}
+  @impl true
+  def render(%__MODULE__{} = renderer, %Layout{} = layout) do
+    with :ok <- Graphics.clear_window(renderer.window_id, @background_color),
+       :ok <- render_layout(renderer, layout),
+       :ok <- Graphics.present_window(renderer.window_id) do
+      :ok
+    end
+  end
+
   @spec render(t(), Widget.t()) :: :ok | {:error, String.t()}
   def render(%__MODULE__{} = renderer, %Widget{} = widget) do
-    with :ok <- Graphics.clear_window(renderer.window_id, @background_color),
-         :ok <- render_widget(renderer, widget, 0, 0, renderer.window_width, renderer.window_height),
-         :ok <- Graphics.present_window(renderer.window_id) do
-      :ok
+    available_bounds = %{width: renderer.window_width, height: renderer.window_height}
+
+    case Layout.calculate(widget, available_bounds) do
+      {:ok, layout} ->
+        render(renderer, layout)
+
+      {:error, reason} ->
+        {:error, "Layout calculation failed: #{reason}"}
     end
   end
 
@@ -243,6 +271,7 @@ defmodule DesktopUI.Renderer.SDL2 do
 
   """
   @spec cleanup(t()) :: :ok
+  @impl true
   def cleanup(%__MODULE__{}) do
     # No renderer-specific resources to clean up
     # Graphics handles window/renderer cleanup
@@ -284,39 +313,31 @@ defmodule DesktopUI.Renderer.SDL2 do
   # Private Functions
   # ============================================================================
 
-  # Main widget dispatch - routes to specific renderer based on widget type
-  defp render_widget(renderer, %Widget{type: :label} = widget, x, y, available_width, available_height) do
-    render_label(renderer, widget, x, y, available_width, available_height)
+  # Main layout dispatch - routes to specific renderer based on widget type
+  defp render_layout(renderer, %Layout{widget: %Widget{type: :label}} = layout) do
+    render_label_at(renderer, layout)
   end
 
-  defp render_widget(renderer, %Widget{type: :button} = widget, x, y, available_width, available_height) do
-    render_button(renderer, widget, x, y, available_width, available_height)
+  defp render_layout(renderer, %Layout{widget: %Widget{type: :button}} = layout) do
+    render_button_at(renderer, layout)
   end
 
-  defp render_widget(renderer, %Widget{type: :container} = widget, x, y, available_width, available_height) do
-    render_container(renderer, widget, x, y, available_width, available_height)
+  defp render_layout(renderer, %Layout{widget: %Widget{type: :container}} = layout) do
+    render_container_layout(renderer, layout)
   end
 
-  # Render label as filled rectangle
-  defp render_label(renderer, %Widget{props: props}, x, y, available_width, _available_height) do
-    width = Keyword.get(props, :width, @default_label_width)
-    height = Keyword.get(props, :height, @default_label_height)
-
-    # Ensure widget doesn't overflow available space
-    actual_width = min(width, available_width)
-    {draw_x, draw_y, draw_w, draw_h} = clip_to_bounds(x, y, actual_width, height, renderer.window_width, renderer.window_height)
+  # Render label at its calculated layout position
+  defp render_label_at(renderer, %Layout{x: x, y: y, width: width, height: height}) do
+    {draw_x, draw_y, draw_w, draw_h} =
+      clip_to_bounds(x, y, width, height, renderer.window_width, renderer.window_height)
 
     Graphics.fill_rect_on_window(renderer.window_id, draw_x, draw_y, draw_w, draw_h, @label_color)
   end
 
-  # Render button as outlined rectangle
-  defp render_button(renderer, %Widget{props: props}, x, y, available_width, _available_height) do
-    width = Keyword.get(props, :width, @default_button_width)
-    height = Keyword.get(props, :height, @default_button_height)
-
-    # Ensure widget doesn't overflow available space
-    actual_width = min(width, available_width)
-    {draw_x, draw_y, draw_w, draw_h} = clip_to_bounds(x, y, actual_width, height, renderer.window_width, renderer.window_height)
+  # Render button at its calculated layout position
+  defp render_button_at(renderer, %Layout{x: x, y: y, width: width, height: height}) do
+    {draw_x, draw_y, draw_w, draw_h} =
+      clip_to_bounds(x, y, width, height, renderer.window_width, renderer.window_height)
 
     # Draw fill
     Graphics.fill_rect_on_window(renderer.window_id, draw_x, draw_y, draw_w, draw_h, @button_fill_color)
@@ -324,109 +345,18 @@ defmodule DesktopUI.Renderer.SDL2 do
     Graphics.draw_rect_on_window(renderer.window_id, draw_x, draw_y, draw_w, draw_h, @button_outline_color)
   end
 
-  # Render container with child layout
-  defp render_container(renderer, %Widget{props: props, children: children}, x, y, available_width, available_height) do
-    layout_type = Keyword.get(props, :layout, :vbox)
-    spacing = Keyword.get(props, :spacing, 0)
-    padding = Keyword.get(props, :padding, 0)
-
-    # Calculate child layouts
-    child_layouts = calculate_layout(layout_type, children, x, y, available_width, available_height, spacing, padding)
-
-    # Render each child at its calculated position
-    Enum.reduce_while(child_layouts, :ok, fn child_layout, _acc ->
-      case render_widget(renderer, child_layout.widget, child_layout.x, child_layout.y, child_layout.width, child_layout.height) do
+  # Render container by rendering all its child layouts
+  defp render_container_layout(renderer, %Layout{widget: %Widget{children: children}}) do
+    Enum.reduce_while(children, :ok, fn child_layout, _acc ->
+      case render_layout(renderer, child_layout) do
         :ok -> {:cont, :ok}
         error -> {:halt, error}
       end
     end)
   end
 
-  # Calculate layout positions for container children
-  defp calculate_layout(:vbox, children, container_x, container_y, container_width, container_height, spacing, padding) do
-    start_x = container_x + padding
-    start_y = container_y + padding
-    available_width = container_width - (2 * padding)
-
-    {layouts, _final_y} =
-      Enum.map_reduce(children, start_y, fn child, current_y ->
-        child_height = get_widget_height(child, available_width)
-        child_width = get_widget_width(child, available_width)
-
-        layout = %{
-          widget: child,
-          x: start_x,
-          y: current_y,
-          width: child_width,
-          height: child_height
-        }
-
-        {layout, current_y + child_height + spacing}
-      end)
-
-    layouts
-  end
-
-  defp calculate_layout(:hbox, children, container_x, container_y, container_width, container_height, spacing, padding) do
-    start_x = container_x + padding
-    start_y = container_y + padding
-    available_height = container_height - (2 * padding)
-
-    {layouts, _final_x} =
-      Enum.map_reduce(children, start_x, fn child, current_x ->
-        child_width = get_widget_width(child, container_width)
-        child_height = get_widget_height(child, available_height)
-
-        layout = %{
-          widget: child,
-          x: current_x,
-          y: start_y,
-          width: child_width,
-          height: child_height
-        }
-
-        {layout, current_x + child_width + spacing}
-      end)
-
-    layouts
-  end
-
-  # Get widget width from props or use default
-  defp get_widget_width(%Widget{type: :label, props: props}, _available_width) do
-    Keyword.get(props, :width, @default_label_width)
-  end
-
-  defp get_widget_width(%Widget{type: :button, props: props}, _available_width) do
-    Keyword.get(props, :width, @default_button_width)
-  end
-
-  defp get_widget_width(%Widget{type: :container, props: props}, available_width) do
-    case Keyword.get(props, :width) do
-      nil -> available_width
-      width -> width
-    end
-  end
-
-  # Get widget height from props or use default
-  defp get_widget_height(%Widget{type: :label, props: props}, _available_height) do
-    Keyword.get(props, :height, @default_label_height)
-  end
-
-  defp get_widget_height(%Widget{type: :button, props: props}, _available_height) do
-    Keyword.get(props, :height, @default_button_height)
-  end
-
-  defp get_widget_height(%Widget{type: :container, props: props}, available_height) do
-    case Keyword.get(props, :height) do
-      nil -> available_height
-      height -> height
-    end
-  end
-
   # Clip drawing coordinates to window bounds
   defp clip_to_bounds(x, y, w, h, max_w, max_h) do
-    import Integer
-
     clipped_x = max(0, min(x, max_w))
     clipped_y = max(0, min(y, max_h))
     clipped_w = max(0, min(w, max_w - clipped_x))

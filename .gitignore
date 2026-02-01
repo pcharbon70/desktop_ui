@@ -21,3 +21,7 @@ desktop_ui-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Zig build artifacts
+/zig-cache/
+/zig-out/

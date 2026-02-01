@@ -389,6 +389,7 @@ static ERL_NIF_TERM nif_is_initialized(ErlNifEnv* env, int argc, const ERL_NIF_T
 
 /* Window management functions */
 static ERL_NIF_TERM nif_sdl_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM nif_sdl_quit(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM nif_create_window(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM nif_destroy_window(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM nif_get_window_size(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
@@ -923,6 +924,41 @@ static ERL_NIF_TERM nif_sdl_init(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
     set_last_error(state, "SDL2 not available at compile time");
     return enif_make_tuple2(env, enif_make_atom(env, "error"),
                             enif_make_string(env, "SDL2 not available at compile time", ERL_NIF_UTF8));
+#endif
+}
+
+/*
+ * nif_sdl_quit() -> :ok | {:error, reason}
+ *
+ * Quit SDL2 and clean up resources.
+ *
+ * This should be called when shutting down the application.
+ */
+static ERL_NIF_TERM nif_sdl_quit(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    (void)argc;
+    (void)argv;
+
+    desktop_ui_nif_state* state = (desktop_ui_nif_state*) enif_priv_data(env);
+
+    if (argc != 0) {
+        return enif_make_badarg(env);
+    }
+
+    if (!state) {
+        return enif_make_tuple2(env, enif_make_atom(env, "error"),
+                                enif_make_string(env, "NIF state not available", ERL_NIF_UTF8));
+    }
+
+#if DESKTOPUI_HAS_SDL2
+    if (state->sdl_initialized) {
+        SDL_Quit();
+        state->sdl_initialized = 0;
+        set_last_error(state, "SDL2 quit successfully");
+    }
+    return enif_make_atom(env, "ok");
+#else
+    return enif_make_atom(env, "ok");  // Nothing to quit if SDL2 not available
 #endif
 }
 
@@ -2338,6 +2374,7 @@ static ErlNifFunc nif_funcs[] = {
     {"nif_get_error", 0, nif_get_error, 0},
     {"nif_is_initialized", 0, nif_is_initialized, 0},
     {"nif_sdl_init", 0, nif_sdl_init, 0},
+    {"nif_sdl_quit", 0, nif_sdl_quit, 0},
     {"nif_create_window", 4, nif_create_window, 0},
     {"nif_destroy_window", 1, nif_destroy_window, 0},
     {"nif_get_window_size", 1, nif_get_window_size, 0},

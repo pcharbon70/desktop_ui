@@ -4,6 +4,17 @@ defmodule DesktopUI.ElmJidoTest do
   alias DesktopUI.Elm
   alias DesktopUI.Signals
 
+  setup_all do
+    # Start the Elixir Registry that Jido.Signal.Bus needs
+    # Jido.Signal.Bus registers itself under the name :Jido.Signal.Registry
+    # Check if it already exists first (may have been started by another test module)
+    case Process.whereis(Jido.Signal.Registry) do
+      nil -> {:ok, _} = Registry.start_link(keys: :unique, name: Jido.Signal.Registry)
+      _ -> :ok
+    end
+    :ok
+  end
+
   describe "Jido.Agent integration" do
     test "component using use DesktopUI.Elm is a valid Jido.Agent" do
       # Verify TestCounter has the required Jido.Agent functions

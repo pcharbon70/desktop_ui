@@ -321,6 +321,11 @@ defmodule DesktopUI.Runtime do
   end
 
   @impl true
+  def handle_call(_msg, _from, state) do
+    {:reply, {:error, :unknown_request}, state}
+  end
+
+  @impl true
   def handle_info({:register_root_component}, state) do
     # Register root component with the Registry
     # Find the Jido.Agent.Server child's PID from the supervisor
@@ -342,6 +347,25 @@ defmodule DesktopUI.Runtime do
     end
 
     {:noreply, state}
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    # Stop the supervisor when the Runtime GenServer stops
+    # This ensures all children (signal bus, RenderingCoordinator, etc.) are stopped
+    if state.supervisor do
+      try do
+        # Check if supervisor is still alive before trying to stop it
+        if Process.alive?(state.supervisor) do
+          Supervisor.stop(state.supervisor, :normal, 5000)
+        end
+      rescue
+        # Supervisor might already be stopped or stopping
+        _ -> :ok
+      end
+    end
+
+    :ok
   end
 
   # Event conversion

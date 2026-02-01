@@ -576,10 +576,16 @@ defmodule DesktopUI.Elm do
     # Add component_id to data if not present
     data_with_id = Map.put(data, :component_id, component_id)
 
-    # Use Jido.Signal.new/2 to create the signal
-    Jido.Signal.new(type, data_with_id,
+    # Create signal using Jido.Signal.new/1
+    signal = Jido.Signal.new(%{
+      type: type,
+      data: data_with_id,
       source: Map.get(data, :source, "/desktop_ui/#{component_id}")
-    )
+    })
+
+    {:ok, signal}
+  rescue
+    _ -> {:error, :invalid_signal_data}
   end
 
   # Private function to publish state change signal

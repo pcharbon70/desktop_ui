@@ -55,11 +55,16 @@ defmodule DesktopUI.Widget do
 
   ## Common Props
 
-  All widgets support these optional properties:
+  All widgets support these optional size properties:
 
   * `:id` - Unique identifier atom for event targeting
-  * `:width` - Width in pixels (integer)
-  * `:height` - Height in pixels (integer)
+  * `:width` - Exact width in pixels (overrides intrinsic size)
+  * `:height` - Exact height in pixels (overrides intrinsic size)
+  * `:min_width` - Minimum width in pixels
+  * `:min_height` - Minimum height in pixels
+  * `:max_width` - Maximum width in pixels (or `:infinity`)
+  * `:max_height` - Maximum height in pixels (or `:infinity`)
+  * `:expand` - Fill available space (`:width`, `:height`, or `true`)
 
   Containers additionally support:
 
@@ -119,11 +124,19 @@ defmodule DesktopUI.Widget do
 
   A label is a simple text display element. It does not respond to user input.
 
-  ## Options
+  ## Size Options
+
+  * `:width` - Exact width in pixels (overrides intrinsic text width)
+  * `:height` - Exact height in pixels (overrides intrinsic text height)
+  * `:min_width` - Minimum width in pixels
+  * `:min_height` - Minimum height in pixels
+  * `:max_width` - Maximum width in pixels (or `:infinity`)
+  * `:max_height` - Maximum height in pixels (or `:infinity`)
+  * `:expand` - Fill available space (`:width`, `:height`, or `true`)
+
+  ## Other Options
 
   * `:id` - Optional unique identifier (atom)
-  * `:width` - Width in pixels (integer)
-  * `:height` - Height in pixels (integer)
 
   ## Examples
 
@@ -131,6 +144,8 @@ defmodule DesktopUI.Widget do
       #=> %DesktopUI.Widget{type: :label, props: [text: "Hello"], ...}
 
       Widget.label("Count: 42", id: :label)
+
+      Widget.label("Stretchy", expand: :width)
 
   """
   @spec label(String.t(), keyword()) :: t()
@@ -158,11 +173,19 @@ defmodule DesktopUI.Widget do
   * `on_click` - The message to send when the button is clicked
   * `opts` - Optional keyword list of properties
 
-  ## Options
+  ## Size Options
+
+  * `:width` - Exact width in pixels (overrides intrinsic text width + padding)
+  * `:height` - Exact height in pixels (overrides intrinsic text height + padding)
+  * `:min_width` - Minimum width in pixels
+  * `:min_height` - Minimum height in pixels
+  * `:max_width` - Maximum width in pixels (or `:infinity`)
+  * `:max_height` - Maximum height in pixels (or `:infinity`)
+  * `:expand` - Fill available space (`:width`, `:height`, or `true`)
+
+  ## Other Options
 
   * `:id` - Optional unique identifier (atom)
-  * `:width` - Width in pixels (integer)
-  * `:height` - Height in pixels (integer)
 
   ## Examples
 
@@ -170,6 +193,8 @@ defmodule DesktopUI.Widget do
       #=> %DesktopUI.Widget{type: :button, props: [text: "Click me", on_click: :clicked], ...}
 
       Widget.button("Increment", :increment, id: :btn_inc)
+
+      Widget.button("Stretchy", :click, expand: :width)
 
   """
   @spec button(String.t(), any(), keyword()) :: t()
@@ -199,13 +224,24 @@ defmodule DesktopUI.Widget do
   * `children` - List of child widgets
   * `opts` - Optional keyword list of properties
 
-  ## Options
+  ## Size Options
 
-  * `:id` - Optional unique identifier (atom)
+  * `:width` - Exact width in pixels (overrides intrinsic container width)
+  * `:height` - Exact height in pixels (overrides intrinsic container height)
+  * `:min_width` - Minimum width in pixels
+  * `:min_height` - Minimum height in pixels
+  * `:max_width` - Maximum width in pixels (or `:infinity`)
+  * `:max_height` - Maximum height in pixels (or `:infinity`)
+  * `:expand` - Fill available space (`:width`, `:height`, or `true`)
+
+  ## Layout Options
+
   * `:spacing` - Space between children in pixels (default: 0)
   * `:padding` - Internal padding in pixels (default: 0)
-  * `:width` - Width in pixels (integer)
-  * `:height` - Height in pixels (integer)
+
+  ## Other Options
+
+  * `:id` - Optional unique identifier (atom)
 
   ## Examples
 
@@ -220,6 +256,9 @@ defmodule DesktopUI.Widget do
         Widget.button("Yes", :yes),
         Widget.button("No", :no)
       ], spacing: 4, padding: 16)
+
+      # Container that fills available space
+      Widget.container(:vbox, children, expand: true)
 
   """
   @spec container(:vbox | :hbox, [t()], keyword()) :: t()
@@ -271,7 +310,7 @@ defmodule DesktopUI.Widget do
     end
   end
 
-  def validate(_other), do: {:error, "not a widget"}
+  def validate(_other), do: {:error, "Not a widget"}
 
   # Private Functions
 

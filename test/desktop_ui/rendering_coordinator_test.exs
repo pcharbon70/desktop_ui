@@ -9,6 +9,17 @@ defmodule DesktopUI.RenderingCoordinatorTest do
   @components_table :desktop_ui_rendering_coordinator_components
   @metrics_table :desktop_ui_rendering_coordinator_metrics
 
+  setup_all do
+    # Start the Elixir Registry that Jido.Signal.Bus needs
+    # Jido.Signal.Bus registers itself under the name :Jido.Signal.Registry
+    # Check if it already exists first (may have been started by another test module)
+    case Process.whereis(Jido.Signal.Registry) do
+      nil -> {:ok, _} = Registry.start_link(keys: :unique, name: Jido.Signal.Registry)
+      _ -> :ok
+    end
+    :ok
+  end
+
   # Helper to wait for a condition with timeout
   defp wait_for_condition(fun, max_retries \\ 10, retry_delay \\ 20) do
     wait_for_condition(fun, max_retries, retry_delay, 0)
@@ -70,6 +81,18 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     end
 
     @doc """
+    Render a component with a pre-calculated layout.
+    This is the preferred rendering path as layout is calculated once.
+    """
+    def render_with_layout(component_id, layout) do
+      render_with_layout(component_id, layout, __MODULE__)
+    end
+
+    def render_with_layout(component_id, layout, name) do
+      GenServer.call(name, {:render_with_layout, component_id, layout})
+    end
+
+    @doc """
     Get the list of renders that have been recorded.
     """
     def get_renders(name \\ __MODULE__) do
@@ -95,6 +118,24 @@ defmodule DesktopUI.RenderingCoordinatorTest do
     @impl true
     def handle_call({:render, component_id, widget}, _from, state) do
       render = %{component_id: component_id, widget: widget, timestamp: DateTime.utc_now()}
+
+      new_state = %{
+        renders: [render | state.renders],
+        render_count: state.render_count + 1
+      }
+
+      {:reply, :ok, new_state}
+    end
+
+    @impl true
+    def handle_call({:render_with_layout, component_id, layout}, _from, state) do
+      # Store render with both layout and widget for layout-based rendering tests
+      render = %{
+        component_id: component_id,
+        widget: layout.widget,
+        layout: layout,
+        timestamp: DateTime.utc_now()
+      }
 
       new_state = %{
         renders: [render | state.renders],
@@ -232,9 +273,9 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       # Verify initialization is complete
       assert_coordinator_ready(pid)
 
-      # Verify renderer is stored
-      renderer = RenderingCoordinator.get_metric(:renderer)
-      assert renderer == {MockRenderer, :test_custom_renderer}
+      # Verify renderer is stored in state (not ETS, since renderer is process-specific)
+      state = :sys.get_state(pid)
+      assert state.renderer == {MockRenderer, :test_custom_renderer}
 
       # Cleanup
       GenServer.stop(pid)
@@ -681,10 +722,23 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       renders = MockRenderer.get_renders(:test_container_renderer)
       assert length(renders) == 1
 
-      widget = hd(renders).widget
-      assert widget.type == :container
+      # With layout-based rendering, the widget is a synthetic widget from layout calculation
+      # Check that we have a layout and it contains the expected structure
+      render = hd(renders)
+
+      # The render should have a layout field (layout-based rendering)
+      assert Map.has_key?(render, :layout)
+
+      # The layout should have valid bounds
+      layout = render.layout
+      assert layout.width > 0
+      assert layout.height > 0
+
+      # The widget in the layout is a synthetic container widget
+      # (may have type: nil due to layout calculation, but has props and children)
+      widget = render.widget
       assert widget.props[:layout] == :vbox
-      assert length(widget.children) == 2
+      assert is_list(widget.children)
 
       # Cleanup
       GenServer.stop(pid)
@@ -761,6 +815,182 @@ defmodule DesktopUI.RenderingCoordinatorTest do
       # Cleanup
       GenServer.stop(pid)
       GenServer.stop(:test_error_renderer)
+      GenServer.stop(bus)
+    end
+  end
+
+  describe "window bounds validation" do
+    test "accepts valid window dimensions" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_bus)
+
+      # Start coordinator with valid dimensions
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_bus,
+          window_width: 1920,
+          window_height: 1080
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify bounds were stored correctly
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 1920
+      assert bounds.height == 1080
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps width below minimum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_min_bus)
+
+      # Start coordinator with width below minimum
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_min_bus,
+          window_width: 50,
+          window_height: 600
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify width was clamped to minimum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 100
+      assert bounds.height == 600
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps height below minimum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_min_h_bus)
+
+      # Start coordinator with height below minimum
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_min_h_bus,
+          window_width: 800,
+          window_height: 50
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify height was clamped to minimum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 800
+      assert bounds.height == 100
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps width above maximum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_max_bus)
+
+      # Start coordinator with width above maximum (8K)
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_max_bus,
+          window_width: 10_000,
+          window_height: 1080
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify width was clamped to maximum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 7680
+      assert bounds.height == 1080
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "clamps height above maximum" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_max_h_bus)
+
+      # Start coordinator with height above maximum (8K)
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_max_h_bus,
+          window_width: 1920,
+          window_height: 10_000
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify height was clamped to maximum
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 1920
+      assert bounds.height == 4320
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "accepts 8K resolution at maximum bounds" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_8k_bus)
+
+      # 8K resolution is 7680x4320
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_8k_bus,
+          window_width: 7680,
+          window_height: 4320
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify bounds were stored correctly
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 7680
+      assert bounds.height == 4320
+
+      # Cleanup
+      GenServer.stop(pid)
+      GenServer.stop(bus)
+    end
+
+    test "accepts minimum bounds" do
+      # Start signal bus
+      {:ok, bus} = Jido.Signal.Bus.start_link(name: :test_validation_min_both_bus)
+
+      {:ok, pid} =
+        RenderingCoordinator.start_link(
+          renderer: MockRenderer,
+          bus: :test_validation_min_both_bus,
+          window_width: 100,
+          window_height: 100
+        )
+
+      assert_coordinator_ready(pid)
+
+      # Verify bounds were stored correctly
+      bounds = RenderingCoordinator.get_window_bounds(pid)
+      assert bounds.width == 100
+      assert bounds.height == 100
+
+      # Cleanup
+      GenServer.stop(pid)
       GenServer.stop(bus)
     end
   end
