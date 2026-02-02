@@ -163,7 +163,8 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
         ]
 
         # Run make with environment variables
-        {output, exit_code} = System.cmd(make, ["all"], env: env, cd: Mix.Project.build_path())
+        # Makefile is in project root, not build path
+        {output, exit_code} = System.cmd(make, ["-f", "Makefile", "all"], env: env, cd: File.cwd!())
 
         case exit_code do
           0 ->
