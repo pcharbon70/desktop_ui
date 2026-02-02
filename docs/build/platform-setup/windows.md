@@ -165,11 +165,31 @@ choco install zig
 
 ### Installing SDL2 (Native)
 
+#### Automated Method (Recommended for build.ps1)
+
+The `build.ps1` script expects SDL2 at `C:\SDL2-2.30.11`. To install:
+
+1. Download SDL2 development libraries from https://github.com/libsdl-org/SDL/releases/download/release-2.30.11/SDL2-devel-2.30.11-VC.zip
+2. Extract to `C:\SDL2-2.30.11`
+3. The build script will automatically detect and use this location
+
+**Or use the provided installation script:**
+```powershell
+# From the project root
+.\install_sdl2.ps1
+```
+
 #### MSYS2 Method
 
 ```bash
 # In MSYS2 MinGW 64-bit terminal
 pacman -S mingw-w64-x86_64-SDL2
+```
+
+Then create a symlink or copy to the expected location:
+```powershell
+# If using MSYS2 SDL2, create a junction/link
+mklink /D C:\SDL2-2.30.11 C:\msys64\mingw64\include\SDL2
 ```
 
 #### Manual Method
@@ -180,8 +200,8 @@ pacman -S mingw-w64-x86_64-SDL2
 
 ```powershell
 # Add to System Environment Variables
-SDL2_DIR=C:\SDL2
-PATH=%PATH%;C:\SDL2\lib\x64
+$env:SDL2_DIR = "C:\SDL2"
+$env:PATH += ";C:\SDL2\lib\x64"
 ```
 
 ## Building DesktopUI on Windows
@@ -196,7 +216,27 @@ mix compile
 mix test
 ```
 
-### Native Windows Build
+### Native Windows Build with build.ps1 (Recommended)
+
+The `build.ps1` script provides automated build support for Windows, handling MSYS2/MinGW detection, SDL2 configuration, and NIF compilation.
+
+```powershell
+# Navigate to project
+cd C:\path\to\desktop_ui
+
+# Run the build script (automated)
+.\build.ps1
+```
+
+**What the build script does:**
+1. Detects MSYS2/MinGW at `C:\msys64\mingw64\bin` (adds to PATH automatically)
+2. Detects SDL2 at `C:\SDL2-2.30.11` (or other standard locations)
+3. Sets `DESKTOPUI_TARGET=x86_64-windows-gnu` for Windows
+4. Passes SDL2_CFLAGS and SDL2_LDFLAGS to the Makefile
+5. Compiles the NIF using mingw32-make
+6. Outputs NIF to `priv/desktop_ui_nif.dll`
+
+### Native Windows Build (Manual)
 
 ```powershell
 # In Command Prompt or PowerShell
@@ -204,14 +244,32 @@ mix test
 # Navigate to project
 cd C:\path\to\desktop_ui
 
+# Add MSYS2/MinGW to PATH
+$env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+
 # Fetch dependencies
 mix deps.get
+
+# Set target and SDL2 flags
+$env:DESKTOPUI_TARGET = "x86_64-windows-gnu"
+$env:SDL2_CFLAGS = "-I\C:\SDL2-2.30.11\include"
+$env:SDL2_LDFLAGS = "-L\C:\SDL2-2.30.11\lib\x64 -lSDL2main -lSDL2"
 
 # Build
 mix compile
 
-# Run tests
+# Run tests (skip NIF recompilation)
+$env:DESKTOPUI_SKIP_NIF = "1"
 mix test
+```
+
+### Running Tests on Windows
+
+After building with `build.ps1`, run tests with:
+
+```powershell
+# Skip NIF recompilation (uses already-built DLL)
+DESKTOPUI_SKIP_NIF=1 mix test
 ```
 
 ### Cross-Compilation from WSL2 to Windows

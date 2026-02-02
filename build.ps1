@@ -3,6 +3,11 @@
 
 $ErrorActionPreference = "Stop"
 
+# Add MSYS2 MinGW to PATH if available (for make/gcc)
+if (Test-Path "C:\msys64\mingw64\bin") {
+    $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+}
+
 # Helper function for colored output
 function Write-ColorOutput {
     param(
@@ -62,6 +67,13 @@ if (-not $zigFound -and -not $makeFound) {
     exit 1
 }
 
+# Detect SDL2
+$sdl2Path = "C:\SDL2-2.30.11"
+$sdl2Found = Test-Path $sdl2Path
+if ($sdl2Found) {
+    Write-ColorOutput "  SDL2 found: $sdl2Path" "Green"
+}
+
 Write-Host ""
 Write-ColorOutput "Step 1: Compiling Elixir code (bootstrapping)..." "White"
 
@@ -99,6 +111,14 @@ if ($compiler -eq "zig" -and $zigFound) {
             # Direct make invocation as fallback
             $ertsInclude = erl -noshell -s init stop -eval "io:format('~s/erts-~s/include', [code:root_dir(), erlang:system_info(version)])."
             $env:ERTS_INCLUDE_DIR = $ertsInclude
+            $env:DESKTOPUI_TARGET = "x86_64-windows-gnu"
+
+            # Add SDL2 flags if available
+            if ($sdl2Found) {
+                $env:SDL2_CFLAGS = "-I$sdl2Path\include"
+                $env:SDL2_LDFLAGS = "-L$sdl2Path\lib\x64 -lSDL2main -lSDL2"
+            }
+
             & $makeCmd -f Makefile all
         } else {
             mix compile.desktop_ui_nif
@@ -112,7 +132,13 @@ if ($compiler -eq "zig" -and $zigFound) {
 
         # Set environment variables for make
         $env:ERTS_INCLUDE_DIR = $ertsInclude
-        $env:DESKTOPUI_TARGET = $null
+        $env:DESKTOPUI_TARGET = "x86_64-windows-gnu"
+
+        # Add SDL2 flags if available
+        if ($sdl2Found) {
+            $env:SDL2_CFLAGS = "-I$sdl2Path\include"
+            $env:SDL2_LDFLAGS = "-L$sdl2Path\lib\x64 -lSDL2main -lSDL2"
+        }
 
         # Run make
         & $makeCmd -f Makefile all
