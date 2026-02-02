@@ -12,13 +12,14 @@ defmodule DesktopUI.Renderer.MockTest do
       nil -> {:ok, _} = Registry.start_link(keys: :unique, name: Jido.Signal.Registry)
       _ -> :ok
     end
+
     :ok
   end
 
   # Setup helper to start a unique renderer for each test
   defp start_renderer(context) do
     name = :"renderer_#{System.unique_integer([:positive, :monotonic])}"
-    {:ok, pid} = Mock.start_link(name: name)
+    {:ok, _pid} = Mock.start_link(name: name)
 
     on_exit(fn ->
       if Process.whereis(name) do
@@ -503,6 +504,7 @@ defmodule DesktopUI.Renderer.MockTest do
 
       # Subscribe to verify signal flow
       test_pid = self()
+
       {:ok, _sub} =
         Jido.Signal.Bus.subscribe(
           :test_mock_bus,

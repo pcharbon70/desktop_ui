@@ -3,7 +3,15 @@ defmodule DesktopUI.Nif.ErtsEdgeCaseTest do
   use ExUnit.Case, async: true
 
   alias DesktopUI.Nif.Erts
-  import DesktopUI.Nif.TestHelper, only: [with_env_var: 3, with_temp_dir: 2, with_temp_file: 2, unique_integer: 0]
+
+  import DesktopUI.Nif.TestHelper,
+    only: [
+      with_env_var: 3,
+      with_temp_dir: 2,
+      with_temp_file: 2,
+      with_mock_erts: 1,
+      unique_integer: 0
+    ]
 
   @moduletag :nif
   @moduletag :erts

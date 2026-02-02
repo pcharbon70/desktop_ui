@@ -384,7 +384,6 @@ defmodule DesktopUI.Elm do
       end
 
       # Jido.Agent lifecycle hook to initialize Elm state
-      @impl true
       def on_before_run(agent) do
         # Initialize Elm state if not already set
         elm_state = Map.get(agent.state, :elm_state)
@@ -526,7 +525,10 @@ defmodule DesktopUI.Elm do
         rescue
           error ->
             # Signal bus not available, continue anyway
-            Logger.debug("Signal bus not available for component #{component_id}: #{inspect(error)}")
+            Logger.debug(
+              "Signal bus not available for component #{component_id}: #{inspect(error)}"
+            )
+
             {:ok, agent}
         end
 
@@ -577,11 +579,12 @@ defmodule DesktopUI.Elm do
     data_with_id = Map.put(data, :component_id, component_id)
 
     # Create signal using Jido.Signal.new/1
-    signal = Jido.Signal.new(%{
-      type: type,
-      data: data_with_id,
-      source: Map.get(data, :source, "/desktop_ui/#{component_id}")
-    })
+    signal =
+      Jido.Signal.new(%{
+        type: type,
+        data: data_with_id,
+        source: Map.get(data, :source, "/desktop_ui/#{component_id}")
+      })
 
     {:ok, signal}
   rescue

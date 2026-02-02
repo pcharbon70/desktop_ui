@@ -154,11 +154,13 @@ defmodule DesktopUI.Nif.SDL2 do
 
   defp get_cflags_from_prefix(prefix) do
     include_dir = Path.join(prefix, "include")
+
     if File.dir?(include_dir) do
       ["-I#{include_dir}"]
     else
       # Try SDL2/SDL2 subdirectory
       sdl2_dir = Path.join(include_dir, "SDL2")
+
       if File.dir?(sdl2_dir) do
         ["-I#{sdl2_dir}"]
       else
@@ -210,6 +212,7 @@ defmodule DesktopUI.Nif.SDL2 do
       case get_cross_sdl2_prefix(target) do
         {:ok, prefix} ->
           lib_dir = Path.join(prefix, "lib")
+
           if File.dir?(lib_dir) do
             ["-L#{lib_dir}", "-lSDL2"]
           else
@@ -227,21 +230,25 @@ defmodule DesktopUI.Nif.SDL2 do
 
   defp get_dynamic_ldflags_native do
     # Try pkg-config libdir first (handles multiarch systems correctly)
-    libdir_result = with {:ok, _pkg_config} <- find_pkg_config(),
-         {:ok, libdir} <- pkg_config_libdir() do
-      {:ok, ["-L#{libdir}", "-lSDL2"]}
-    else
-      :error ->
-        :error
-    end
+    libdir_result =
+      with {:ok, _pkg_config} <- find_pkg_config(),
+           {:ok, libdir} <- pkg_config_libdir() do
+        {:ok, ["-L#{libdir}", "-lSDL2"]}
+      else
+        :error ->
+          :error
+      end
 
     case libdir_result do
-      {:ok, flags} -> flags
+      {:ok, flags} ->
+        flags
+
       :error ->
         # Fall back to prefix-based detection
         case get_sdl2_prefix() do
           {:ok, prefix} ->
             lib_dir = Path.join(prefix, "lib")
+
             if File.dir?(lib_dir) do
               ["-L#{lib_dir}", "-lSDL2"]
             else
@@ -260,11 +267,12 @@ defmodule DesktopUI.Nif.SDL2 do
 
   defp get_static_ldflags(target) do
     # For static linking, find the actual .a file
-    prefix_result = if target != nil do
-      get_cross_sdl2_prefix(target)
-    else
-      get_sdl2_prefix()
-    end
+    prefix_result =
+      if target != nil do
+        get_cross_sdl2_prefix(target)
+      else
+        get_sdl2_prefix()
+      end
 
     case prefix_result do
       {:ok, prefix} ->
@@ -276,6 +284,7 @@ defmodule DesktopUI.Nif.SDL2 do
         else
           # Try alternative naming
           static_lib_alt = Path.join(lib_dir, "libSDL2static.a")
+
           if File.exists?(static_lib_alt) do
             [static_lib_alt]
           else
@@ -354,7 +363,7 @@ defmodule DesktopUI.Nif.SDL2 do
       # Debian multiarch pattern: /usr/lib/{target-triple}
       Path.join(["/usr", "lib", target]),
       # Common cross-compile sysroot
-      Path.join(["/usr", target, "usr"]),
+      Path.join(["/usr", target, "usr"])
     ]
 
     # Check each path for SDL2
@@ -476,12 +485,14 @@ defmodule DesktopUI.Nif.SDL2 do
       if File.dir?(path) do
         # Check for SDL2 headers
         sdl_h = Path.join(path, "SDL.h")
+
         if File.exists?(sdl_h) do
           {:ok, path}
         else
           # Check SDL2/SDL2 subdirectory
           sdl2_dir = Path.join(path, "SDL2")
           sdl2_h = Path.join(sdl2_dir, "SDL.h")
+
           if File.exists?(sdl2_h) do
             {:ok, path}
           else
@@ -502,6 +513,7 @@ defmodule DesktopUI.Nif.SDL2 do
     case System.cmd("pkg-config", ["sdl2", "--variable=prefix"]) do
       {output, 0} ->
         prefix = String.trim(output)
+
         if prefix != "" do
           {:ok, prefix}
         else
@@ -517,6 +529,7 @@ defmodule DesktopUI.Nif.SDL2 do
     case System.cmd("pkg-config", ["sdl2", "--variable=libdir"]) do
       {output, 0} ->
         libdir = String.trim(output)
+
         if libdir != "" do
           {:ok, libdir}
         else
@@ -531,7 +544,7 @@ defmodule DesktopUI.Nif.SDL2 do
   defp pkg_config_cflags do
     case System.cmd("pkg-config", ["sdl2", "--cflags"]) do
       {output, 0} ->
-        flags = output
+        output
         |> String.trim()
         |> String.split()
         |> Enum.filter(&(&1 != ""))
@@ -548,7 +561,7 @@ defmodule DesktopUI.Nif.SDL2 do
   defp pkg_config_ldflags do
     case System.cmd("pkg-config", ["sdl2", "--libs"]) do
       {output, 0} ->
-        flags = output
+        output
         |> String.trim()
         |> String.split()
         |> Enum.filter(&(&1 != ""))
@@ -566,6 +579,7 @@ defmodule DesktopUI.Nif.SDL2 do
     case System.cmd("sdl2-config", ["--prefix"]) do
       {output, 0} ->
         prefix = String.trim(output)
+
         if prefix != "" do
           {:ok, prefix}
         else

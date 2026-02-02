@@ -47,8 +47,10 @@ defmodule DesktopUI.Nif.ZigTest do
       result = Zig.find_executable()
 
       case result do
-        {:ok, _path} -> :ok  # Zig is installed
-        {:error, :not_found} -> :ok  # Expected when not installed
+        # Zig is installed
+        {:ok, _path} -> :ok
+        # Expected when not installed
+        {:error, :not_found} -> :ok
         _ -> flunk("Unexpected result: #{inspect(result)}")
       end
     end
@@ -88,7 +90,7 @@ defmodule DesktopUI.Nif.ZigTest do
       case Zig.version() do
         {:ok, version} ->
           assert is_binary(version)
-          assert match?(~r/^\d+\.\d+\.\d+$/, version)
+          assert Regex.match?(~r/^\d+\.\d+\.\d+$/, version)
 
         {:error, :not_found} ->
           # Zig not installed, acceptable
@@ -101,8 +103,10 @@ defmodule DesktopUI.Nif.ZigTest do
       result = Zig.version()
 
       case result do
-        {:ok, _version} -> :ok  # Zig is installed
-        {:error, :not_found} -> :ok  # Expected when not installed
+        # Zig is installed
+        {:ok, _version} -> :ok
+        # Expected when not installed
+        {:error, :not_found} -> :ok
         _ -> flunk("Unexpected result: #{inspect(result)}")
       end
     end

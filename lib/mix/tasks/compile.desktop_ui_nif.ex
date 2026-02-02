@@ -89,7 +89,7 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
           compile_with_zig(erts_include, target, [])
 
         {:ok, :makefile} ->
-          compile_with_makefile(erts_include, target, [log: true])
+          compile_with_makefile(erts_include, target, log: true)
 
         {:ok, :none} ->
           # Explicitly skipped via DESKTOPUI_PREFER_COMPILER=none
@@ -164,7 +164,8 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
 
         # Run make with environment variables
         # Makefile is in project root, not build path
-        {output, exit_code} = System.cmd(make, ["-f", "Makefile", "all"], env: env, cd: File.cwd!())
+        {output, exit_code} =
+          System.cmd(make, ["-f", "Makefile", "all"], env: env, cd: File.cwd!())
 
         case exit_code do
           0 ->
@@ -343,7 +344,7 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
         # Try fallback to Makefile
         case find_make_executable() do
           {:ok, _make} ->
-            compile_with_makefile(erts_include, target, [log: false])
+            compile_with_makefile(erts_include, target, log: false)
 
           {:error, :not_found} ->
             diagnostic = %{
@@ -367,12 +368,13 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
         # Try fallback to Makefile
         case find_make_executable() do
           {:ok, _make} ->
-            compile_with_makefile(erts_include, target, [log: false])
+            compile_with_makefile(erts_include, target, log: false)
 
           {:error, :not_found} ->
             diagnostic = %{
               compiler_name: "desktop_ui_nif",
-              message: "Zig version incompatible and make not found. Please install Zig #{DesktopUI.Nif.Zig.minimum_version()} or later.",
+              message:
+                "Zig version incompatible and make not found. Please install Zig #{DesktopUI.Nif.Zig.minimum_version()} or later.",
               position: nil,
               file: nil,
               severity: :error
@@ -398,13 +400,14 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     # Our target triples are already compatible with Zig
     # Just validate that it's a known target format
     case target do
-      t when t in [
-        "x86_64-linux-gnu",
-        "aarch64-linux-gnu",
-        "x86_64-macos-none",
-        "aarch64-macos-none",
-        "x86_64-windows-gnu"
-      ] ->
+      t
+      when t in [
+             "x86_64-linux-gnu",
+             "aarch64-linux-gnu",
+             "x86_64-macos-none",
+             "aarch64-macos-none",
+             "x86_64-windows-gnu"
+           ] ->
         {:ok, target}
 
       _ ->
@@ -414,7 +417,7 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     end
   end
 
-  defp build_zig_command(zig_path, target, erts_include, output_path) do
+  defp build_zig_command(_zig_path, target, erts_include, output_path) do
     # Get SDL2 flags
     # Determine if this is cross-compilation
     native_target = DesktopUI.Nif.Platform.target_triple()
@@ -428,17 +431,20 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     # zig cc -target {target} -O2 -fPIC -shared -I {erts} {sdl2_cflags} {source} -o {output} {sdl2_ldflags}
     base_args = [
       "cc",
-      "-target", target,
+      "-target",
+      target,
       "-O2",
       "-fPIC",
       "-shared",
-      "-I", erts_include
+      "-I",
+      erts_include
     ]
 
     # Add SDL2 cflags (each as separate argument if they contain spaces)
-    cflag_args = Enum.flat_map(sdl2_cflags, fn flag ->
-      String.split(flag, " ", trim: true)
-    end)
+    cflag_args =
+      Enum.flat_map(sdl2_cflags, fn flag ->
+        String.split(flag, " ", trim: true)
+      end)
 
     # Source files
     source_files = Path.wildcard("c_src/*.c")
@@ -447,16 +453,13 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     output_args = ["-o", output_path]
 
     # Add SDL2 ldflags
-    ldflag_args = Enum.flat_map(sdl2_ldflags, fn flag ->
-      String.split(flag, " ", trim: true)
-    end)
+    ldflag_args =
+      Enum.flat_map(sdl2_ldflags, fn flag ->
+        String.split(flag, " ", trim: true)
+      end)
 
     # Combine all arguments
     base_args ++ cflag_args ++ source_files ++ output_args ++ ldflag_args
-  end
-
-  defp get_output_path do
-    get_output_path(nil)
   end
 
   defp get_output_path(target) do
@@ -518,9 +521,19 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     # List of known architectures
     # Be permissive - allow unknown architectures as Zig may support them
     arch in [
-      "x86_64", "aarch64", "arm64", "arm", "x86",
-      "riscv64", "riscv32", "mips64", "mips",
-      "powerpc64le", "powerpc", "s390x", "sparc64"
+      "x86_64",
+      "aarch64",
+      "arm64",
+      "arm",
+      "x86",
+      "riscv64",
+      "riscv32",
+      "mips64",
+      "mips",
+      "powerpc64le",
+      "powerpc",
+      "s390x",
+      "sparc64"
     ] or Regex.match?(~r/^[a-z0-9_]+$/, arch)
   end
 
@@ -528,8 +541,15 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     # List of known OS names
     # Be permissive - allow unknown OS as Zig may support them
     os in [
-      "linux", "macos", "windows", "freebsd", "openbsd",
-      "netbsd", "dragonfly", "solaris", "illumos"
+      "linux",
+      "macos",
+      "windows",
+      "freebsd",
+      "openbsd",
+      "netbsd",
+      "dragonfly",
+      "solaris",
+      "illumos"
     ] or Regex.match?(~r/^[a-z0-9_]+$/, os)
   end
 
@@ -537,63 +557,72 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
     # List of known environments
     # Be permissive - allow unknown environments as Zig may support them
     env in [
-      "gnu", "gnueabi", "gnueabihf", "musl", "musleabi", "musleabihf",
-      "none", "eabi", "eabihf", "android"
+      "gnu",
+      "gnueabi",
+      "gnueabihf",
+      "musl",
+      "musleabi",
+      "musleabihf",
+      "none",
+      "eabi",
+      "eabihf",
+      "android"
     ] or Regex.match?(~r/^[a-z0-9_]+$/, env)
   end
 
   defp format_target_error(target, reason) do
     base_message = "Invalid target triple: \"#{target}\""
 
-    detail_message = case reason do
-      :invalid_format ->
-        """
+    detail_message =
+      case reason do
+        :invalid_format ->
+          """
 
-        Expected format: {arch}-{os}-{env}
-        Example: x86_64-linux-gnu
+          Expected format: {arch}-{os}-{env}
+          Example: x86_64-linux-gnu
 
-        The target triple must have exactly three components separated by hyphens.
-        """
+          The target triple must have exactly three components separated by hyphens.
+          """
 
-      {:unknown_architecture, arch} ->
-        """
+        {:unknown_architecture, arch} ->
+          """
 
-        Unknown architecture: "#{arch}"
+          Unknown architecture: "#{arch}"
 
-        Supported architectures:
-        - x86_64, aarch64, arm64, arm, x86
-        - riscv64, riscv32, mips64, mips
-        - powerpc64le, powerpc, s390x, sparc64
+          Supported architectures:
+          - x86_64, aarch64, arm64, arm, x86
+          - riscv64, riscv32, mips64, mips
+          - powerpc64le, powerpc, s390x, sparc64
 
-        Or Zig may support additional architectures.
-        """
+          Or Zig may support additional architectures.
+          """
 
-      {:unknown_os, os} ->
-        """
+        {:unknown_os, os} ->
+          """
 
-        Unknown OS: "#{os}"
+          Unknown OS: "#{os}"
 
-        Supported OS:
-        - linux, macos, windows
-        - freebsd, openbsd, netbsd
-        - dragonfly, solaris, illumos
+          Supported OS:
+          - linux, macos, windows
+          - freebsd, openbsd, netbsd
+          - dragonfly, solaris, illumos
 
-        Or Zig may support additional operating systems.
-        """
+          Or Zig may support additional operating systems.
+          """
 
-      {:unknown_environment, env} ->
-        """
+        {:unknown_environment, env} ->
+          """
 
-        Unknown environment: "#{env}"
+          Unknown environment: "#{env}"
 
-        Supported environments:
-        - gnu, gnueabi, gnueabihf
-        - musl, musleabi, musleabihf
-        - none, eabi, eabihf, android
+          Supported environments:
+          - gnu, gnueabi, gnueabihf
+          - musl, musleabi, musleabihf
+          - none, eabi, eabihf, android
 
-        Or Zig may support additional environments.
-        """
-    end
+          Or Zig may support additional environments.
+          """
+      end
 
     base_message <> detail_message
   end
@@ -603,12 +632,13 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
   defp log_makefile_selection do
     pref = System.get_env("DESKTOPUI_PREFER_COMPILER")
 
-    message = if pref == "makefile" do
-      "Compiling NIF with Makefile (DESKTOPUI_PREFER_COMPILER=makefile)"
-    else
-      # Fallback selection
-      "Compiling NIF with Makefile (fallback from Zig)"
-    end
+    message =
+      if pref == "makefile" do
+        "Compiling NIF with Makefile (DESKTOPUI_PREFER_COMPILER=makefile)"
+      else
+        # Fallback selection
+        "Compiling NIF with Makefile (fallback from Zig)"
+      end
 
     Mix.shell().info([:cyan, message])
   end
@@ -623,14 +653,6 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
 
           false ->
             # Zig requested but not available - error
-            diagnostic = %{
-              compiler_name: "desktop_ui_nif",
-              message: "Zig compiler requested but not found. #{DesktopUI.Nif.Zig.not_found_error()}",
-              position: nil,
-              file: nil,
-              severity: :error
-            }
-
             {:error, :zig_not_available}
         end
 
@@ -641,14 +663,6 @@ defmodule Mix.Tasks.Compile.DesktopUiNif do
             {:ok, :makefile}
 
           {:error, :not_found} ->
-            diagnostic = %{
-              compiler_name: "desktop_ui_nif",
-              message: "Makefile compiler requested but make not found.",
-              position: nil,
-              file: nil,
-              severity: :error
-            }
-
             {:error, :makefile_not_available}
         end
 
