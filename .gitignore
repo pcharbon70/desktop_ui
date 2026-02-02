@@ -24,4 +24,5 @@ desktop_ui-*.tar
 
 # Zig build artifacts
 /zig-cache/
+/.zig-cache/
 /zig-out/
