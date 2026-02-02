@@ -39,7 +39,7 @@ defmodule DesktopUI.Nif.Zig do
 
   @minimum_version "0.11.0"
   @recommended_version "0.13.0"
-  @version_regex ~r/^zig (?<version>\d+\.\d+\.\d+)/
+  @version_regex ~r/^(?:zig )?(?<version>\d+\.\d+\.\d+)/
 
   @doc """
   Returns the minimum required Zig version.

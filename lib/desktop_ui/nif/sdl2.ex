@@ -226,20 +226,34 @@ defmodule DesktopUI.Nif.SDL2 do
   end
 
   defp get_dynamic_ldflags_native do
-    case get_sdl2_prefix() do
-      {:ok, prefix} ->
-        lib_dir = Path.join(prefix, "lib")
-        if File.dir?(lib_dir) do
-          ["-L#{lib_dir}", "-lSDL2"]
-        else
-          ["-lSDL2"]
-        end
-
+    # Try pkg-config libdir first (handles multiarch systems correctly)
+    libdir_result = with {:ok, _pkg_config} <- find_pkg_config(),
+         {:ok, libdir} <- pkg_config_libdir() do
+      {:ok, ["-L#{libdir}", "-lSDL2"]}
+    else
       :error ->
-        # Try pkg-config
-        case pkg_config_ldflags() do
-          {:ok, flags} -> flags
-          :error -> []
+        :error
+    end
+
+    case libdir_result do
+      {:ok, flags} -> flags
+      :error ->
+        # Fall back to prefix-based detection
+        case get_sdl2_prefix() do
+          {:ok, prefix} ->
+            lib_dir = Path.join(prefix, "lib")
+            if File.dir?(lib_dir) do
+              ["-L#{lib_dir}", "-lSDL2"]
+            else
+              ["-lSDL2"]
+            end
+
+          :error ->
+            # Final fallback to raw pkg-config --libs
+            case pkg_config_ldflags() do
+              {:ok, flags} -> flags
+              :error -> []
+            end
         end
     end
   end
@@ -401,7 +415,7 @@ defmodule DesktopUI.Nif.SDL2 do
   defp pkg_config_available? do
     case find_pkg_config() do
       {:ok, _} ->
-        case System.cmd("pkg-config", ["SDL2", "--exists"]) do
+        case System.cmd("pkg-config", ["sdl2", "--exists"]) do
           {_output, 0} -> true
           {_output, _exit_code} -> false
         end
@@ -485,7 +499,7 @@ defmodule DesktopUI.Nif.SDL2 do
   end
 
   defp pkg_config_prefix do
-    case System.cmd("pkg-config", ["SDL2", "--variable=prefix"]) do
+    case System.cmd("pkg-config", ["sdl2", "--variable=prefix"]) do
       {output, 0} ->
         prefix = String.trim(output)
         if prefix != "" do
@@ -499,8 +513,23 @@ defmodule DesktopUI.Nif.SDL2 do
     end
   end
 
+  defp pkg_config_libdir do
+    case System.cmd("pkg-config", ["sdl2", "--variable=libdir"]) do
+      {output, 0} ->
+        libdir = String.trim(output)
+        if libdir != "" do
+          {:ok, libdir}
+        else
+          :error
+        end
+
+      {_output, _exit_code} ->
+        :error
+    end
+  end
+
   defp pkg_config_cflags do
-    case System.cmd("pkg-config", ["SDL2", "--cflags"]) do
+    case System.cmd("pkg-config", ["sdl2", "--cflags"]) do
       {output, 0} ->
         flags = output
         |> String.trim()
@@ -517,7 +546,7 @@ defmodule DesktopUI.Nif.SDL2 do
   end
 
   defp pkg_config_ldflags do
-    case System.cmd("pkg-config", ["SDL2", "--libs"]) do
+    case System.cmd("pkg-config", ["sdl2", "--libs"]) do
       {output, 0} ->
         flags = output
         |> String.trim()
