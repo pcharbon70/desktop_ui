@@ -29,45 +29,42 @@ DesktopUI includes a native NIF (Native Implemented Function) that requires comp
 - [Cross-Compilation Guide](docs/build/cross-compilation.md) - Build for other platforms
 - [Platform Setup](docs/build/platform-setup/) - Platform-specific prerequisites
 - [Troubleshooting](docs/build/troubleshooting.md) - Common issues and solutions
-The NIF can be built using either Mix (recommended for Elixir projects) or Zig directly
-(useful for development and debugging).
 
-### Building with Mix (Recommended)
+### Quick Start
 
-The NIF is automatically compiled when you run `mix compile`:
+DesktopUI uses a **two-step build process**:
 
-```bash
-mix compile
+1. **Compile Elixir code**: `mix compile`
+2. **Build the NIF** (platform-specific):
+
+#### Windows (PowerShell)
+
+```powershell
+.\build.ps1
 ```
 
-#### Cross-Compilation with Mix
-
-To cross-compile for a different target platform, set the `DESKTOPUI_TARGET` environment variable:
+#### macOS/Linux
 
 ```bash
-# Build for Windows from Linux
-DESKTOPUI_TARGET=x86_64-windows-gnu mix compile
-
-# Build for macOS ARM64 from Linux
-DESKTOPUI_TARGET=aarch64-macos-none mix compile
-
-# Build for Linux ARM64 from x86_64
-DESKTOPUI_TARGET=aarch64-linux-gnu mix compile
+./build.sh
+# or
+make -f Makefile
 ```
 
-#### Compiler Selection
+The build script handles both steps automatically. See [docs/build/getting-started.md](docs/build/getting-started.md) for detailed platform-specific instructions.
 
-By default, Mix tries Zig first and falls back to Makefile. You can force a specific compiler:
+### Manual NIF Compilation
+
+If you need to compile the NIF manually (after Elixir code is already compiled):
 
 ```bash
-# Force Zig compiler
-DESKTOPUI_PREFER_COMPILER=zig mix compile
+mix compile.desktop_ui_nif
+```
 
-# Force Makefile compiler
-DESKTOPUI_PREFER_COMPILER=makefile mix compile
+Or use the shortcut alias:
 
-# Skip NIF compilation entirely
-DESKTOPUI_SKIP_NIF=1 mix compile
+```bash
+mix nif.compile
 ```
 
 ### Building with Zig

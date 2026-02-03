@@ -9,9 +9,6 @@ defmodule DesktopUi.MixProject do
       start_permanent: Mix.env() == :prod,
       compilers: compilers(Mix.env()),
       deps: deps(),
-      # NIF compilation options
-      nif_opts: nif_opts(),
-      # NIF-specific aliases
       aliases: aliases()
     ]
   end
@@ -34,78 +31,33 @@ defmodule DesktopUi.MixProject do
     ]
   end
 
-  # NIF Compiler Configuration
+  # Compiler Configuration
   #
-  # The NIF compiler is included by default for all environments.
-  # Set DESKTOPUI_SKIP_NIF environment variable to skip NIF compilation.
+  # DesktopUI uses a two-step build process:
+  # 1. Compile Elixir code (via `mix compile`)
+  # 2. Build NIF separately (via build.ps1, build.sh, or `mix compile.desktop_ui_nif`)
   #
-  # ## Compiler Order
+  # The NIF is not compiled during `mix compile` to avoid circular dependencies.
+  # If the NIF is missing, the application will fail to start with a clear error.
   #
-  # The NIF compiler runs before Erlang compilation to ensure the shared
-  # library is available when the application starts.
+  # ## Build Process
   #
-  # ## NIF Options
+  # Quick start:
+  #   Windows:  .\\build.ps1
+  #   Unix:     ./build.sh or make -f Makefile
   #
-  # The following options can be configured via `:nif_opts` in project/0:
-  #
-  # * `:target` - Target triple for cross-compilation (e.g., "x86_64-windows-gnu")
-  # * `:skip` - Skip NIF compilation (true/false)
-  # * `:erts_include_dir` - Override ERTS include directory path
-  # * `:sdl2_cflags` - Override SDL2 C compiler flags
-  # * `:sdl2_ldflags` - Override SDL2 linker flags
-  #
-  # ## Environment Variables
-  #
-  # Environment variables take precedence over project configuration:
-  #
-  # * `DESKTOPUI_SKIP_NIF` - Skip NIF compilation (any value)
-  # * `DESKTOPUI_TARGET` - Target triple for cross-compilation
-  # * `ERTS_INCLUDE_DIR` - Override ERTS include directory
-  # * `SDL2_CFLAGS` - Override SDL2 C compiler flags
-  # * `SDL2_LDFLAGS` - Override SDL2 linker flags
+  # Manual NIF compilation (after Elixir code is compiled):
+  #   mix compile.desktop_ui_nif
   #
   # ## Aliases
   #
   # * `mix nif.compile` - Compile the NIF only
   # * `mix nif.clean` - Clean NIF build artifacts
   defp compilers(_env) do
-    if System.get_env("DESKTOPUI_SKIP_NIF") do
-      Mix.compilers()
-    else
-      # NIF compiler runs first, before Erlang compilation
-      [:desktop_ui_nif] ++ Mix.compilers()
-    end
+    Mix.compilers()
   end
 
-  # NIF compilation options
-  #
-  # Returns configuration options for NIF compilation.
-  # Environment variables take precedence over these values.
-  defp nif_opts do
-    [
-      # Target triple for cross-compilation
-      # Can be overridden by DESKTOPUI_TARGET environment variable
-      target: System.get_env("DESKTOPUI_TARGET"),
-
-      # Skip NIF compilation
-      # Can be overridden by DESKTOPUI_SKIP_NIF environment variable
-      skip: System.get_env("DESKTOPUI_SKIP_NIF") != nil,
-
-      # ERTS include directory override
-      # Can be overridden by ERTS_INCLUDE_DIR environment variable
-      erts_include_dir: System.get_env("ERTS_INCLUDE_DIR"),
-
-      # SDL2 C compiler flags override
-      # Can be overridden by SDL2_CFLAGS environment variable
-      sdl2_cflags: System.get_env("SDL2_CFLAGS"),
-
-      # SDL2 linker flags override
-      # Can be overridden by SDL2_LDFLAGS environment variable
-      sdl2_ldflags: System.get_env("SDL2_LDFLAGS")
-    ]
-  end
-
-  # NIF-specific aliases
+  # NIF-related aliases
   #
   # Provides convenient shortcuts for NIF operations.
   defp aliases do
