@@ -816,7 +816,7 @@ defmodule DesktopUI.RenderingCoordinator do
   # Get a component's elm state via its agent server
   defp get_component_elm_state(pid) when is_pid(pid) do
     try do
-      case Jido.Agent.Server.state(pid) do
+      case Jido.AgentServer.state(pid) do
         {:ok, server_state} ->
           agent = server_state.agent
           elm_state = Map.get(agent.state, :elm_state)

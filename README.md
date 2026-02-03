@@ -29,6 +29,7 @@ DesktopUI includes a native NIF (Native Implemented Function) that requires comp
 - [Cross-Compilation Guide](docs/build/cross-compilation.md) - Build for other platforms
 - [Platform Setup](docs/build/platform-setup/) - Platform-specific prerequisites
 - [Troubleshooting](docs/build/troubleshooting.md) - Common issues and solutions
+- **[Release Guide](docs/build/release.md)** - Creating distributable releases with bundled SDL2
 
 ### Quick Start
 
@@ -124,4 +125,32 @@ zig build -Doptimize=ReleaseFast
 
 - `zig build` - Build and install NIF to `priv/`
 - `zig build check` - Build without installing (useful for CI)
+
+## Creating Releases
+
+DesktopUI applications require SDL2 to be distributed with your application. See the [Release Guide](docs/build/release.md) for complete documentation.
+
+### Quick Release
+
+#### Windows
+
+```powershell
+.\release.ps1
+```
+
+Creates `releases/desktop_ui_v{x.x.x}_windows-x64.zip` with bundled SDL2.dll.
+
+#### Linux/macOS
+
+```bash
+./release.sh
+```
+
+Creates `releases/desktop_ui_v{x.x.x}_{platform}-{arch}.tar.gz` with bundled SDL2 library.
+
+The release includes:
+- NIF library
+- SDL2 library (platform-specific)
+- Launcher scripts that set library paths
+- README with end-user instructions
 

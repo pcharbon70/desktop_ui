@@ -12,6 +12,10 @@ defmodule DesktopUI.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      # Jido Registry for agent management
+      # Jido.AgentServer requires a registry named Jido.Registry to be available
+      {Registry, keys: :unique, name: Jido.Registry},
+
       # RendererCache GenServer owns the renderer cache ETS table
       # This ensures proper cleanup on hot reload and application shutdown
       {DesktopUI.RendererCache, []}

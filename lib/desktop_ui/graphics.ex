@@ -1047,9 +1047,15 @@ defmodule DesktopUI.Graphics do
   end
 
   defp load_nif_file(nif_path) do
-    # :erlang.load_nif automatically adds the platform-specific extension (.so on Linux, .dylib on macOS)
-    # So we pass the path without extension and let BEAM handle it
-    load_nif_attempt(nif_path)
+    # On Windows, :erlang.load_nif does NOT add the .dll extension automatically
+    # On Unix, it does add .so/.dylib, so we only add it for Windows
+    path_with_ext =
+      case :os.type() do
+        {:win32, _} -> nif_path <> ".dll"
+        _ -> nif_path
+      end
+
+    load_nif_attempt(path_with_ext)
   end
 
   defp load_nif_attempt(path) do

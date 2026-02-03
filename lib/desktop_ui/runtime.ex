@@ -45,7 +45,7 @@ defmodule DesktopUI.Runtime do
   The root component must:
   - Use `DesktopUI.Elm` (which includes `use Jido.Agent`)
   - Implement `init/1`, `update/2`, and `view/1` callbacks
-  - Be startable via `Jido.Agent.Server.start_link/2`
+  - Be startable via `Jido.AgentServer.start_link/2`
 
   ## Event Bridge
 
@@ -263,7 +263,7 @@ defmodule DesktopUI.Runtime do
            bus: bus
          ]},
         # Root component starts last
-        {Jido.Agent.Server,
+        {Jido.AgentServer,
          [
            agent: root_component,
            opts: root_component_opts,
@@ -328,10 +328,10 @@ defmodule DesktopUI.Runtime do
   @impl true
   def handle_info({:register_root_component}, state) do
     # Register root component with the Registry
-    # Find the Jido.Agent.Server child's PID from the supervisor
+    # Find the Jido.AgentServer child's PID from the supervisor
     root_pid =
       Enum.find_value(Supervisor.which_children(state.supervisor), fn
-        {Jido.Agent.Server, pid, _, _} when is_pid(pid) -> pid
+        {Jido.AgentServer, pid, _, _} when is_pid(pid) -> pid
         _ -> nil
       end)
 
