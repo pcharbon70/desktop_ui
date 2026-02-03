@@ -11,6 +11,22 @@
 # Or with IEx for interactive debugging:
 #   iex -S mix run run_counter.exs
 
+# Add SDL2 to PATH for Windows
+# SDL2.dll is bundled in priv/sdl2/ for development
+case :os.type() do
+  {:win32, _} ->
+    # Add priv/sdl2 to PATH so SDL2.dll can be found
+    sdl2_path = Path.join([:code.priv_dir(:desktop_ui), "sdl2"])
+    if File.exists?(sdl2_path) do
+      current_path = System.get_env("PATH", "")
+      System.put_env("PATH", "#{sdl2_path};#{current_path}")
+    end
+
+  _ ->
+    # Unix: SDL2 is expected to be in standard system paths
+    :ok
+end
+
 # Start the DesktopUI Runtime with the Counter component
 case DesktopUI.Runtime.start_link(
   root_component: DesktopUI.Examples.Counter,

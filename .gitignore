@@ -26,3 +26,6 @@ desktop_ui-*.tar
 /zig-cache/
 /.zig-cache/
 /zig-out/
+
+# SDL2 binaries (platform-specific dependencies)
+/priv/sdl2/
